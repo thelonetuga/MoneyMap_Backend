@@ -1,71 +1,132 @@
 from pydantic import BaseModel
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, List
 
-# --- Account Schemas ---
+# --- USER SCHEMAS (Novo) ---
+class UserBase(BaseModel):
+    email: str
+
+class UserCreate(UserBase):
+    password: str  # A password é necessária para criar...
+
+class UserResponse(UserBase):
+    id: int
+    created_at: datetime
+    # ...mas nunca devolvemos a password na resposta!
+
+    class Config:
+        from_attributes = True
+
+
+# --- ACCOUNT SCHEMAS ---
 class AccountBase(BaseModel):
     name: str
     type: str
-    current_balance: float
+    currency_code: str = "EUR" # Novo campo
+    current_balance: float = 0.0
 
 class AccountCreate(AccountBase):
     pass
 
 class AccountResponse(AccountBase):
     id: int
+    user_id: int
+
     class Config:
         from_attributes = True
 
-# --- Transaction Schemas ---
-class TransactionCreate(BaseModel):
-    amount: float
-    description: str
-    account_id: int
-    category_id: Optional[int] = None
-    date: date
 
-class TransactionResponse(TransactionCreate):
+# --- CATEGORY SCHEMAS ---
+class CategoryBase(BaseModel):
+    name: str
+    type: str # Ex: Expense, Income
+
+class CategoryCreate(CategoryBase):
+    pass
+
+class CategoryResponse(CategoryBase):
     id: int
+    user_id: int
+
     class Config:
         from_attributes = True
 
-# --- Asset Schemas ---
-class AssetCreate(BaseModel):
+
+# --- ASSET SCHEMAS ---
+class AssetBase(BaseModel):
     symbol: str
     name: str
     asset_type: str
+    currency_code: str = "USD" # Novo campo
 
-class AssetResponse(AssetCreate):
+class AssetCreate(AssetBase):
+    pass
+
+class AssetResponse(AssetBase):
     id: int
+
     class Config:
         from_attributes = True
 
-# --- Holding Schemas ---
-class HoldingCreate(BaseModel):
-    account_id: int
-    asset_id: int
-    quantity: float
-    avg_buy_price: float
 
-class HoldingResponse(HoldingCreate):
+# --- ASSET PRICE HISTORY (Novo) ---
+class AssetPriceBase(BaseModel):
+    date: date
+    close_price: float
+
+class AssetPriceCreate(AssetPriceBase):
+    asset_id: int
+
+class AssetPriceResponse(AssetPriceBase):
     id: int
-    asset_symbol: str
-    current_price: Optional[float] = None
-    total_value: Optional[float] = None
+    asset_id: int
+
+    class Config:
+        from_attributes = True
+
+
+# --- TRANSACTION SCHEMAS ---
+class TransactionBase(BaseModel):
+    amount: float
+    description: str
+    date: date
+    transaction_type: str # BUY, SELL, DEPOSIT, WITHDRAW
+
+class TransactionCreate(TransactionBase):
+    account_id: int
+    category_id: Optional[int] = None
+    
+    # Campos de Investimento (Opcionais)
+    asset_id: Optional[int] = None
+    price_per_unit: Optional[float] = None
+    quantity: Optional[float] = None
+
+class TransactionResponse(TransactionCreate):
+    id: int
+    
+    # Podemos incluir objetos aninhados se quisermos, 
+    # mas por agora mantemos simples com IDs
     
     class Config:
         from_attributes = True
 
-# --- Portfolio Summary Schema ---
-class PortfolioPosition(BaseModel):
-    symbol: str
+
+# --- HOLDING SCHEMAS ---
+class HoldingBase(BaseModel):
     quantity: float
     avg_buy_price: float
-    current_price: float
-    total_value: float
-    profit_loss: float
 
-class PortfolioResponse(BaseModel):
+class HoldingCreate(HoldingBase):
     account_id: int
-    total_portfolio_value: float
-    positions: List[PortfolioPosition]
+    asset_id: int
+
+class HoldingResponse(HoldingBase):
+    id: int
+    account_id: int
+    asset_id: int
+    
+    # Campos calculados (não vêm da base de dados, seriam inseridos pela lógica da API)
+    # current_value: Optional[float] = None 
+    
+    class Config:
+        from_attributes = True
