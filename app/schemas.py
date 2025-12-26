@@ -130,3 +130,19 @@ class HoldingResponse(HoldingBase):
     
     class Config:
         from_attributes = True
+
+# --- PORTFOLIO SUMMARY SCHEMAS (Relatórios Calculados) ---
+
+class PortfolioPosition(BaseModel):
+    symbol: str
+    quantity: float
+    avg_buy_price: float
+    current_price: float
+    total_value: float
+    profit_loss: float
+
+class PortfolioResponse(BaseModel):
+    # Pode adicionar user_id se quiser identificar de quem é o relatório
+    account_id: int  # Campo adicionado conforme pediu
+    total_portfolio_value: float
+    positions: List[PortfolioPosition]

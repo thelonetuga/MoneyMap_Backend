@@ -101,6 +101,53 @@ def create_transaction(transaction: schemas.TransactionCreate, db: Session = Dep
 def read_transactions(account_id: int, db: Session = Depends(get_db)):
     return db.query(models.Transaction).filter(models.Transaction.account_id == account_id).all()
 
+# --- ROTA DE PORTFÓLIO (CÁLCULO DE VALOR) ---
+
+@app.get("/users/{user_id}/portfolio", response_model=schemas.PortfolioResponse)
+def get_portfolio_summary(user_id: int, db: Session = Depends(get_db)):
+    # 1. Encontrar todas as contas do utilizador
+    accounts = db.query(models.Account).filter(models.Account.user_id == user_id).all()
+    account_ids = [acc.id for acc in accounts]
+    
+    # 2. Encontrar todos os holdings (ativos) nessas contas
+    holdings = db.query(models.Holding).filter(models.Holding.account_id.in_(account_ids)).all()
+    
+    positions = []
+    total_value = 0.0
+    
+    for holding in holdings:
+        # 3. Para cada ativo, buscar o preço mais recente registado
+        # Ordenamos por data descendente e pegamos o primeiro
+        latest_price_entry = db.query(models.AssetPrice)\
+            .filter(models.AssetPrice.asset_id == holding.asset_id)\
+            .order_by(models.AssetPrice.date.desc())\
+            .first()
+        
+        current_price = latest_price_entry.close_price if latest_price_entry else 0.0
+        
+        # 4. Cálculos Financeiros
+        market_value = holding.quantity * current_price
+        invested_value = holding.quantity * holding.avg_buy_price
+        profit_loss = market_value - invested_value
+        
+        # Adicionar à lista
+        positions.append(schemas.PortfolioPosition(
+            symbol=holding.asset.symbol,
+            quantity=holding.quantity,
+            avg_buy_price=holding.avg_buy_price,
+            current_price=current_price,
+            total_value=market_value,
+            profit_loss=profit_loss
+        ))
+        
+        total_value += market_value
+
+    # 5. Devolver a resposta estruturada
+    return schemas.PortfolioResponse(
+        account_id=user_id, # Nota: O schema pede account_id, mas aqui estamos a resumir por user.
+        total_portfolio_value=total_value,
+        positions=positions
+    )
 
 # --- ROTA DE SAÚDE (HEALTH CHECK) ---
 @app.get("/")
