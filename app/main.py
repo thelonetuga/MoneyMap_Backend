@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-
 # Importar os ficheiros locais
 import models
 import schemas
