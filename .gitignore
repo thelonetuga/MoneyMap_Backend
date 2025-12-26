@@ -1,0 +1,17 @@
+# Ficheiros compilados (são gerados automaticamente, não guardar)
+__pycache__/
+*.pyc
+
+# Ambientes Virtuais (pesados e específicos da sua máquina)
+venv/
+.venv/
+env/
+.env
+
+# Variáveis de ambiente (passwords e chaves secretas)
+.env
+
+# Ficheiros de sistema e IDEs (opcional, mas recomendado)
+.DS_Store
+.vscode/
+.idea/
