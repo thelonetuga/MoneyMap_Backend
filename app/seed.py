@@ -1,36 +1,50 @@
 import random
 from datetime import date, timedelta
-from sqlalchemy.orm import Session
-from app.database.database import SessionLocal, engine
-from app.models.models import (
+from sqlalchemy import text
+
+# --- IMPORTS ---
+from database.database import SessionLocal, engine
+from models.models import (
     Base, User, UserProfile, Account, AccountType, 
     Category, SubCategory, Transaction, TransactionType, 
     Asset, AssetPrice, Holding
 )
+from auth import get_password_hash 
 
-def clean_database(db: Session):
-    print("🧹 A limpar base de dados antiga...")
-    # Ordem específica devido às Foreign Keys
-    db.query(Transaction).delete()
-    db.query(Holding).delete()
-    db.query(AssetPrice).delete()
-    db.query(SubCategory).delete()
-    db.query(Category).delete()
-    db.query(Account).delete()
-    db.query(UserProfile).delete()
-    db.query(User).delete()
-    db.query(Asset).delete()
-    db.query(AccountType).delete()
-    db.query(TransactionType).delete()
-    db.commit()
+def clean_database(db):
+    print("🧹 A limpar base de dados antiga (TRUNCATE)...")
+    try:
+        # TRUNCATE CASCADE: A forma mais violenta e eficaz de limpar tabelas no Postgres.
+        # Apaga os dados e reinicia os contadores de ID (RESTART IDENTITY).
+        # Nota: As tabelas devem estar no plural, conforme definido no SQLAlchemy (ex: 'users', 'assets')
+        
+        tables = [
+            "transactions", "holdings", "asset_prices", 
+            "sub_categories", "categories", 
+            "accounts", "user_profiles", "users", 
+            "assets", "account_types", "transaction_types"
+        ]
+        
+        # Montar a string SQL
+        sql_command = f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE;"
+        
+        db.execute(text(sql_command))
+        db.commit()
+        print("✨ Base de dados limpa com sucesso.")
+        
+    except Exception as e:
+        print(f"⚠️ Erro ao limpar (se for a primeira vez, ignore): {e}")
+        db.rollback()
 
 def create_dummy_data():
     db = SessionLocal()
+    
+    # 1. Limpar tudo primeiro
     clean_database(db)
+    
     print("🌱 A semear novos dados...")
 
-    # --- 1. LOOKUPS (TIPOS) ---
-    # Tipos de Conta
+    # --- 2. CONFIGURAÇÕES (TYPES) ---
     acc_types = [
         AccountType(name="Conta à Ordem"),    # ID 1
         AccountType(name="Poupança"),         # ID 2
@@ -39,210 +53,157 @@ def create_dummy_data():
     ]
     db.add_all(acc_types)
     
-    # Tipos de Transação
     tx_types = [
-        TransactionType(name="Despesa", is_investment=False),           # ID 1
-        TransactionType(name="Receita", is_investment=False),           # ID 2
+        TransactionType(name="Despesa", is_investment=False),            # ID 1
+        TransactionType(name="Receita", is_investment=False),            # ID 2
         TransactionType(name="Compra Investimento", is_investment=True), # ID 3
         TransactionType(name="Venda Investimento", is_investment=True)   # ID 4
     ]
     db.add_all(tx_types)
     db.commit()
 
-    # Recarregar para ter acesso aos IDs
-    type_expense = tx_types[0]
-    type_income = tx_types[1]
-    type_buy = tx_types[2]
+    # Guardar referências
+    t_expense = tx_types[0]
+    t_income = tx_types[1]
+    t_buy = tx_types[2]
 
-    # --- 2. USER & PROFILE ---
-    user = User(email="joao@email.com", password_hash="hash123")
+    # --- 3. UTILIZADOR & LOGIN ---
+    print("🔐 A criar utilizador seguro...")
+    password_encriptada = get_password_hash("123456")
+    
+    user = User(email="joao@email.com", password_hash=password_encriptada)
     db.add(user)
     db.commit()
     
-    profile = UserProfile(
-        user_id=user.id, 
-        first_name="João", 
-        last_name="Silva", 
-        preferred_currency="EUR"
-    )
+    profile = UserProfile(user_id=user.id, first_name="João", last_name="Silva", preferred_currency="EUR")
     db.add(profile)
     db.commit()
-    print("✅ User João Silva criado.")
 
-    # --- 3. CATEGORIAS & SUBCATEGORIAS ---
-    categories_data = {
-        "Casa": ["Renda", "Eletricidade", "Internet", "Manutenção"],
-        "Alimentação": ["Supermercado", "Restaurantes", "Café"],
-        "Transporte": ["Combustível", "Uber", "Passe"],
-        "Lazer": ["Streaming", "Cinema", "Viagens", "Jogos"],
+    # --- 4. CATEGORIAS ---
+    cats_dict = {
+        "Casa": ["Renda", "Luz & Água", "Internet", "Limpeza"],
+        "Alimentação": ["Supermercado", "Restaurantes", "Uber Eats"],
+        "Transporte": ["Combustível", "Uber", "Manutenção"],
+        "Lazer": ["Cinema", "Subscrições (Netflix)", "Viagens"],
         "Rendimento": ["Salário", "Freelance", "Dividendos"]
     }
-
-    subcat_objs = {} # Para usar nas transações (ex: "Supermercado": obj)
-
-    for cat_name, subs in categories_data.items():
-        cat = Category(name=cat_name, user_id=user.id)
+    
+    subcats_map = {} 
+    
+    for c_name, subs in cats_dict.items():
+        cat = Category(name=c_name, user_id=user.id)
         db.add(cat)
         db.commit()
-        
-        for sub_name in subs:
-            sub = SubCategory(name=sub_name, category_id=cat.id)
+        for s_name in subs:
+            sub = SubCategory(name=s_name, category_id=cat.id)
             db.add(sub)
-            subcat_objs[sub_name] = sub
-    
+            subcats_map[s_name] = sub
     db.commit()
-    print("✅ Categorias configuradas.")
 
-    # --- 4. ATIVOS E PREÇOS (60 DIAS) ---
+    # --- 5. ATIVOS & HISTÓRICO ---
+    print("📈 A simular mercado financeiro...")
     assets_data = [
-        ("AAPL", "Apple Inc.", "Stock", 180.00),
-        ("NVDA", "NVIDIA Corp", "Stock", 450.00),
-        ("VWCE", "Vanguard All-World", "ETF", 105.00),
-        ("BTC", "Bitcoin", "Crypto", 42000.00),
-        ("ETH", "Ethereum", "Crypto", 2300.00),
+        ("AAPL", "Apple Inc.", 175.00),
+        ("TSLA", "Tesla", 240.00),
+        ("VWCE", "Vanguard All-World ETF", 105.00),
+        ("BTC", "Bitcoin", 41000.00),
+        ("ETH", "Ethereum", 2200.00)
     ]
-
-    assets_map = {}
-
-    for symbol, name, atype, base_price in assets_data:
-        asset = Asset(symbol=symbol, name=name, asset_type=atype)
+    
+    asset_objs = {}
+    
+    for symbol, name, base_price in assets_data:
+        asset = Asset(symbol=symbol, name=name, asset_type=("Crypto" if base_price > 1000 else "Stock"))
         db.add(asset)
-        db.commit() # Commit para gerar ID
-        assets_map[symbol] = asset
-
-        # Gerar histórico
-        curr_price = base_price
-        for i in range(60, -1, -1): # Do passado para hoje
-            # Random Walk: Preço varia entre -2% e +2%
-            change = random.uniform(0.98, 1.02)
+        db.commit()
+        asset_objs[symbol] = asset
+        
+        # Gerar 90 dias de preços
+        curr_price = base_price * 0.85 
+        for day in range(90, -1, -1):
+            date_price = date.today() - timedelta(days=day)
+            change = random.uniform(0.98, 1.03) 
             curr_price = curr_price * change
+            db.add(AssetPrice(asset_id=asset.id, date=date_price, close_price=curr_price))
+    
+    db.commit()
+
+    # --- 6. CONTAS BANCÁRIAS ---
+    acc_banco = Account(name="Millennium BCP", current_balance=0, user_id=user.id, account_type_id=1)
+    acc_corretora = Account(name="XTB Invest", current_balance=0, user_id=user.id, account_type_id=3)
+    acc_crypto = Account(name="Binance", current_balance=0, user_id=user.id, account_type_id=4)
+    
+    db.add_all([acc_banco, acc_corretora, acc_crypto])
+    db.commit()
+
+    # --- 7. TRANSAÇÕES ---
+    print("💸 A simular a vida do João (3 Meses)...")
+    
+    start_date = date.today() - timedelta(days=90)
+    
+    # Depósito Inicial
+    initial_deposit = Transaction(
+        date=start_date, description="Saldo Inicial", amount=5000, 
+        account_id=acc_banco.id, transaction_type_id=t_income.id, sub_category_id=subcats_map["Salário"].id
+    )
+    acc_banco.current_balance += 5000
+    db.add(initial_deposit)
+
+    for day in range(1, 91):
+        current_date = start_date + timedelta(days=day)
+        
+        # Salário
+        if current_date.day == 1:
+            amount = 2500.00
+            t = Transaction(date=current_date, description="Salário Google", amount=amount, account_id=acc_banco.id, transaction_type_id=t_income.id, sub_category_id=subcats_map["Salário"].id)
+            acc_banco.current_balance += amount
+            db.add(t)
+        
+        # Renda
+        if current_date.day == 2:
+            amount = 850.00
+            t = Transaction(date=current_date, description="Pagamento Renda", amount=amount, account_id=acc_banco.id, transaction_type_id=t_expense.id, sub_category_id=subcats_map["Renda"].id)
+            acc_banco.current_balance -= amount
+            db.add(t)
+
+        # Despesas Aleatórias
+        if random.random() < 0.4:
+            cat_choice = random.choice(["Supermercado", "Restaurantes", "Uber", "Luz & Água", "Cinema"])
+            amount = round(random.uniform(15.0, 150.0), 2)
+            t = Transaction(date=current_date, description=f"Compra {cat_choice}", amount=amount, account_id=acc_banco.id, transaction_type_id=t_expense.id, sub_category_id=subcats_map[cat_choice].id)
+            acc_banco.current_balance -= amount
+            db.add(t)
+
+        # Investimentos
+        if random.random() < 0.1:
+            acc_corretora.current_balance += 500
             
-            price_entry = AssetPrice(
-                asset_id=asset.id,
-                date=date.today() - timedelta(days=i),
-                close_price=round(curr_price, 2)
+            price = 100.00 
+            qty = 2
+            cost = price * qty
+            
+            t = Transaction(
+                date=current_date, description="Compra VWCE", amount=cost, 
+                account_id=acc_corretora.id, transaction_type_id=t_buy.id, 
+                asset_id=asset_objs["VWCE"].id, quantity=qty, price_per_unit=price
             )
-            db.add(price_entry)
-    
+            acc_corretora.current_balance -= cost
+            db.add(t)
+            
+            h = db.query(Holding).filter(Holding.account_id==acc_corretora.id, Holding.asset_id==asset_objs["VWCE"].id).first()
+            if not h:
+                h = Holding(account_id=acc_corretora.id, asset_id=asset_objs["VWCE"].id, quantity=0, avg_buy_price=0)
+                db.add(h)
+            
+            total_val = (h.quantity * h.avg_buy_price) + cost
+            h.quantity += qty
+            h.avg_buy_price = total_val / h.quantity
+
     db.commit()
-    print("✅ Mercado financeiro simulado.")
-
-    # --- 5. CONTAS ---
-    # Vamos começar com saldos "iniciais" fictícios
-    acc_bank = Account(name="Millennium BCP", current_balance=500.00, currency_code="EUR", user_id=user.id, account_type_id=1)
-    acc_broker = Account(name="Trade Republic", current_balance=2000.00, currency_code="EUR", user_id=user.id, account_type_id=3)
-    acc_crypto = Account(name="Binance", current_balance=500.00, currency_code="EUR", user_id=user.id, account_type_id=4)
     
-    db.add_all([acc_bank, acc_broker, acc_crypto])
-    db.commit()
-
-    # --- 6. TRANSAÇÕES (SIMULAÇÃO DE VIDA) ---
-    # Gerar dados para os últimos 2 meses
-    
-    start_date = date.today() - timedelta(days=60)
-    
-    # 6.1 Transações Recorrentes (Salário e Renda)
-    for i in range(3): # 3 meses (aprox)
-        month_date = start_date + timedelta(days=i*30)
-        
-        # Receber Salário (Dia 1)
-        tx_salary = Transaction(
-            date=month_date,
-            description="Salário Google",
-            amount=2500.00,
-            account_id=acc_bank.id,
-            transaction_type_id=type_income.id,
-            sub_category_id=subcat_objs["Salário"].id
-        )
-        acc_bank.current_balance += 2500.00
-        db.add(tx_salary)
-
-        # Pagar Renda (Dia 2)
-        tx_rent = Transaction(
-            date=month_date + timedelta(days=1),
-            description="Senhorio",
-            amount=850.00,
-            account_id=acc_bank.id,
-            transaction_type_id=type_expense.id,
-            sub_category_id=subcat_objs["Renda"].id
-        )
-        acc_bank.current_balance -= 850.00
-        db.add(tx_rent)
-
-    # 6.2 Transações Aleatórias (Cafés, Supermercado, Uber)
-    for _ in range(40): # 40 transações aleatórias
-        random_days = random.randint(0, 60)
-        tx_date = date.today() - timedelta(days=random_days)
-        
-        choices = [
-            ("Supermercado", 40.0, 150.0, "Continente"),
-            ("Restaurantes", 15.0, 60.0, "Jantar Fora"),
-            ("Café", 2.0, 5.0, "Starbucks"),
-            ("Uber", 5.0, 15.0, "Uber Trip"),
-            ("Streaming", 9.99, 14.99, "Netflix/Spotify"),
-        ]
-        cat_name, min_val, max_val, desc = random.choice(choices)
-        amount = round(random.uniform(min_val, max_val), 2)
-        
-        tx = Transaction(
-            date=tx_date,
-            description=desc,
-            amount=amount,
-            account_id=acc_bank.id,
-            transaction_type_id=type_expense.id,
-            sub_category_id=subcat_objs[cat_name].id
-        )
-        acc_bank.current_balance -= amount
-        db.add(tx)
-
-    # 6.3 Investimentos (Compras)
-    # Compra 1: VWCE há 45 dias
-    price_vwce = 100.00
-    qty_vwce = 10
-    cost_vwce = price_vwce * qty_vwce
-    
-    tx_inv1 = Transaction(
-        date=date.today() - timedelta(days=45),
-        description="Compra VWCE Mensal",
-        amount=cost_vwce,
-        account_id=acc_broker.id,
-        transaction_type_id=type_buy.id,
-        asset_id=assets_map["VWCE"].id,
-        quantity=qty_vwce,
-        price_per_unit=price_vwce
-    )
-    acc_broker.current_balance -= cost_vwce
-    
-    # Holding para VWCE
-    h1 = Holding(account_id=acc_broker.id, asset_id=assets_map["VWCE"].id, quantity=qty_vwce, avg_buy_price=price_vwce)
-
-    # Compra 2: Bitcoin há 10 dias
-    price_btc = 40000.00
-    qty_btc = 0.05
-    cost_btc = price_btc * qty_btc
-    
-    tx_inv2 = Transaction(
-        date=date.today() - timedelta(days=10),
-        description="Buy the dip BTC",
-        amount=cost_btc,
-        account_id=acc_crypto.id,
-        transaction_type_id=type_buy.id,
-        asset_id=assets_map["BTC"].id,
-        quantity=qty_btc,
-        price_per_unit=price_btc
-    )
-    acc_crypto.current_balance -= cost_btc
-    
-    # Holding para BTC
-    h2 = Holding(account_id=acc_crypto.id, asset_id=assets_map["BTC"].id, quantity=qty_btc, avg_buy_price=price_btc)
-
-    db.add_all([tx_inv1, tx_inv2, h1, h2])
-    db.commit()
-
-    print(f"💰 Saldo final Banco: {acc_bank.current_balance:.2f} €")
-    print(f"📈 Saldo final Corretora: {acc_broker.current_balance:.2f} €")
-    print("🚀 Seed concluído com sucesso!")
-
+    print(f"💰 Saldo Banco: {acc_banco.current_balance:.2f}€")
+    print(f"📈 Saldo Corretora: {acc_corretora.current_balance:.2f}€")
+    print("✅ Seed concluído com sucesso!")
     db.close()
 
 if __name__ == "__main__":
