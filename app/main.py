@@ -1,10 +1,9 @@
+from routers import users, transactions, portfolio, setup, analytics
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database.database import engine
 import models.models as models
 
-# Importar os nossos novos routers organizados
-from routers import auth, transactions, portfolio, setup, analytics
 
 # Inicializar Base de Dados
 models.Base.metadata.create_all(bind=engine)
@@ -22,7 +21,7 @@ app.add_middleware(
 )
 
 # Ligar os routers à aplicação
-app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(transactions.router)
 app.include_router(portfolio.router)
 app.include_router(setup.router)

@@ -13,7 +13,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 horas
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password, hashed_password):
-    """Verifica se a password inserida bate certo com o hash na BD"""
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password):

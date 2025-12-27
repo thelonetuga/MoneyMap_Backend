@@ -4,9 +4,12 @@ from sqlalchemy.orm import Session
 import models.models as models
 import schemas.schemas as schemas
 from database.database import get_db
-from app.auth import verify_password, create_access_token, get_password_hash
 
-router = APIRouter(tags=["auth"])
+# IMPORTANTE: Importar do ficheiro 'auth.py' que está na pasta principal
+from auth import verify_password, create_access_token, get_password_hash
+
+# Nota: Mudei a tag para "users" para ficar organizado na documentação
+router = APIRouter(tags=["users"])
 
 @router.post("/token")
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
