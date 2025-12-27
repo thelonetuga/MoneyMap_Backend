@@ -40,68 +40,94 @@ def get_portfolio(current_user: models.User = Depends(get_current_user), db: Ses
     
     total_cash = sum(acc.current_balance for acc in accounts)
     
+    # Busca todas as posições em todas as contas
     holdings = db.query(models.Holding).options(joinedload(models.Holding.asset)).filter(models.Holding.account_id.in_(account_ids)).filter(models.Holding.quantity > 0).all()
     
-    positions = []
-    total_invested = 0.0
-
-    # --- LÓGICA INTELIGENTE DE PREÇOS ---
-    symbols_needed = [h.asset.symbol for h in holdings]
+    # --- LÓGICA DE PREÇOS (YAHOO) ---
+    symbols_needed = set([h.asset.symbol for h in holdings]) # 'set' remove duplicados na lista de pesquisa
     symbols_to_fetch = []
     
-    # 1. Verificar o que já temos em Cache
     current_prices = {}
     for sym in symbols_needed:
         cached = get_cached_price(sym)
         if cached:
             current_prices[sym] = cached
         else:
-            symbols_to_fetch.append(sym) # Só vamos buscar ao Yahoo o que falta/expirou
+            symbols_to_fetch.append(sym)
 
-    # 2. Ir ao Yahoo buscar APENAS o necessário
     if symbols_to_fetch:
         try:
-            # print(f"A ir ao Yahoo buscar: {symbols_to_fetch}") # Debug
             tickers = yf.Tickers(' '.join(symbols_to_fetch))
-            
             for symbol in symbols_to_fetch:
                 try:
+                    # Verifica se o ticker existe na resposta
                     if symbol in tickers.tickers:
                         info = tickers.tickers[symbol].info
                         price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
                         
                         if price:
                             current_prices[symbol] = price
-                            update_cache(symbol, price) # Guardar para a próxima vez
+                            update_cache(symbol, price)
                 except Exception:
-                    print(f"Erro ao buscar {symbol}")
+                    print(f"Erro ao buscar ticker individual: {symbol}")
         except Exception as e:
-            print(f"Erro Yahoo: {e}")
+            print(f"Erro geral Yahoo: {e}")
 
-    # --- CALCULAR ---
+    # --- CALCULAR E CONSOLIDAR (A CORREÇÃO ESTÁ AQUI) ---
+    
+    # 1. Dicionário para agrupar por Símbolo
+    portfolio_map = {} 
+
     for h in holdings:
-        # Tenta preço atual (cache ou novo), senão usa preço de compra
-        real_time_price = current_prices.get(h.asset.symbol)
-        curr_price = real_time_price if real_time_price else h.avg_buy_price
+        symbol = h.asset.symbol
         
-        market_val = h.quantity * curr_price
-        pnl = market_val - (h.quantity * h.avg_buy_price)
+        # Determinar preço atual
+        real_time_price = current_prices.get(symbol)
+        curr_price = real_time_price if real_time_price else h.avg_buy_price
 
-        positions.append(schemas.PortfolioPosition(
-            symbol=h.asset.symbol, 
-            quantity=h.quantity, 
-            avg_buy_price=h.avg_buy_price,
-            current_price=curr_price, 
-            total_value=market_val, 
-            profit_loss=pnl
-        ))
-        total_invested += market_val
+        if symbol not in portfolio_map:
+            portfolio_map[symbol] = {
+                "quantity": 0.0,
+                "total_cost": 0.0,      # Custo total de aquisição (para calcular média depois)
+                "current_price": curr_price,
+                "symbol": symbol
+            }
+        
+        # Acumular valores (Agregação)
+        portfolio_map[symbol]["quantity"] += h.quantity
+        portfolio_map[symbol]["total_cost"] += (h.quantity * h.avg_buy_price)
+        # Atualiza preço atual (garante que usa o mais recente)
+        portfolio_map[symbol]["current_price"] = curr_price
+
+    # 2. Gerar a lista final baseada no mapa consolidado
+    positions = []
+    total_invested_market_value = 0.0
+
+    for symbol, data in portfolio_map.items():
+        qty = data["quantity"]
+        if qty > 0:
+            # Cálculo do Preço Médio Ponderado Global
+            avg_buy_price_consolidated = data["total_cost"] / qty
+            
+            market_val = qty * data["current_price"]
+            pnl = market_val - data["total_cost"]
+
+            positions.append(schemas.PortfolioPosition(
+                symbol=symbol, 
+                quantity=qty, 
+                avg_buy_price=avg_buy_price_consolidated,
+                current_price=data["current_price"], 
+                total_value=market_val, 
+                profit_loss=pnl
+            ))
+            
+            total_invested_market_value += market_val
 
     return schemas.PortfolioResponse(
         user_id=user_id, 
-        total_net_worth=total_cash + total_invested,
+        total_net_worth=total_cash + total_invested_market_value,
         total_cash=total_cash, 
-        total_invested=total_invested, 
+        total_invested=total_invested_market_value, 
         positions=positions
     )
 

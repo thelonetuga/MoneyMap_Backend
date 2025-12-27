@@ -1,4 +1,4 @@
-from routers import users, transactions, portfolio, setup, analytics
+from routers import users, transactions, portfolio, setup, analytics, categories
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database.database import engine
@@ -26,6 +26,7 @@ app.include_router(transactions.router)
 app.include_router(portfolio.router)
 app.include_router(setup.router)
 app.include_router(analytics.router)
+app.include_router(categories.router)
 
 @app.get("/")
 def root():

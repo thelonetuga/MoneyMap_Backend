@@ -150,7 +150,7 @@ class TransactionCreate(TransactionBase):
     account_id: int
     transaction_type_id: int
     
-    # Opcionais (dependem do tipo de transação)
+    # Opcionais
     sub_category_id: Optional[int] = None
     asset_id: Optional[int] = None
 
@@ -158,7 +158,13 @@ class TransactionResponse(TransactionBase):
     id: int
     account_id: int
     
-    # Objetos Aninhados (Para o Frontend não ter de fazer mais pedidos)
+    # --- ADICIONE ESTAS 3 LINHAS ---
+    transaction_type_id: int          # <--- O QUE ESTAVA A FALTAR
+    sub_category_id: Optional[int] = None
+    asset_id: Optional[int] = None
+    # -------------------------------
+
+    # Objetos Aninhados (Mantêm-se, são ótimos para a listagem)
     transaction_type: TransactionTypeResponse
     sub_category: Optional[SubCategoryResponse] = None
     asset: Optional[AssetResponse] = None
