@@ -1,6 +1,6 @@
 # init_db.py
-from database import engine
-from models import Base
+from app.db.database import engine
+from app.model.models import Base
 
 def create_tables():
     print("A conectar ao PostgreSQL no Docker...")

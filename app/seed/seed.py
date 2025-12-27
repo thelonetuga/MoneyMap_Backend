@@ -1,8 +1,8 @@
 import random
 from datetime import date, timedelta
 from sqlalchemy.orm import Session
-from database import SessionLocal, engine
-from models import (
+from app.db.database import SessionLocal, engine
+from app.model.models import (
     Base, User, UserProfile, Account, AccountType, 
     Category, SubCategory, Transaction, TransactionType, 
     Asset, AssetPrice, Holding

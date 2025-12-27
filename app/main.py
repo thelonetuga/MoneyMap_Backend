@@ -5,9 +5,9 @@ from sqlalchemy import func
 from typing import List
 
 # Importar os ficheiros locais
-import models
-import schemas
-from database import get_db
+import app.model.models as models
+import app.schema.schemas as schemas
+from app.db.database import get_db
 
 app = FastAPI(title="MoneyMap API", description="API Financeira v2.0")
 
