@@ -1,5 +1,5 @@
 # init_db.py
-from app.db.database import engine
+from app.database.database import engine
 from app.model.models import Base
 
 def create_tables():
