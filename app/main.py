@@ -1,13 +1,17 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
 from typing import List
 
-# Importar os ficheiros locais
-import app.model.models as models
-import app.schema.schemas as schemas
-from app.database.database import get_db
+# --- IMPORTS CORRIGIDOS ---
+# Estrutura: from [nome_da_pasta] import [nome_do_ficheiro_sem_py]
+
+from database.database import get_db, engine
+# Nota: Às vezes é preciso importar o models para o SQLAlchemy o registar
+import models.models as models 
+import schemas.schemas as schemas
+
+# ... resto do código igual ...
 
 app = FastAPI(title="MoneyMap API", description="API Financeira v2.0")
 
