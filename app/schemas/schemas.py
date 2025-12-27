@@ -177,7 +177,17 @@ class PortfolioPosition(BaseModel):
     total_value: float
     profit_loss: float
 
+# No final do ficheiro schemas.py
+
 class PortfolioResponse(BaseModel):
     user_id: int
-    total_portfolio_value: float
+    total_net_worth: float      # O Grande Total (Bancos + Investimentos)
+    total_cash: float           # Apenas contas bancárias
+    total_invested: float       # Apenas ações/crypto
     positions: List[PortfolioPosition]
+
+# Adicionar no schemas.py
+
+class HistoryPoint(BaseModel):
+    date: str   # "2023-11-01"
+    value: float

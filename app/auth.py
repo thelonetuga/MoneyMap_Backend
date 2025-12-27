@@ -1,0 +1,34 @@
+from datetime import datetime, timedelta
+from typing import Union
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+
+# --- CONFIGURAÇÕES ---
+# Num projeto real, isto viria de variáveis de ambiente (.env)
+SECRET_KEY = "segredo_super_secreto_mudar_em_producao"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 horas
+
+# Contexto para Hashing de Passwords (Bcrypt)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def verify_password(plain_password, hashed_password):
+    """Verifica se a password inserida bate certo com o hash na BD"""
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    """Transforma a password '123456' em algo ilegível"""
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None):
+    """Gera o Token JWT que o Frontend vai guardar"""
+    to_encode = data.copy()
+    
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+        
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
