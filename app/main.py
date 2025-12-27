@@ -178,6 +178,27 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
     db.refresh(db_tx)
     return db_tx
 
+@app.get("/users/{user_id}/transactions/", response_model=List[schemas.TransactionResponse])
+def read_transactions(user_id: int, db: Session = Depends(get_db)):
+    # 1. Obter contas do user
+    accounts = db.query(models.Account).filter(models.Account.user_id == user_id).all()
+    account_ids = [acc.id for acc in accounts]
+    
+    # 2. Obter transações dessas contas (ordenadas por data recente)
+    transactions = db.query(models.Transaction)\
+        .options(
+            joinedload(models.Transaction.transaction_type),
+            joinedload(models.Transaction.sub_category),
+            joinedload(models.Transaction.asset)
+        )\
+        .filter(models.Transaction.account_id.in_(account_ids))\
+        .order_by(models.Transaction.date.desc())\
+        .limit(100)\
+        .all()
+        
+    return transactions
+
+
 
 # --- 6. PORTFÓLIO ---
 
