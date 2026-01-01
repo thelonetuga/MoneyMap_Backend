@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
-from typing import List
+from typing import List, Optional
+from datetime import date
 
 # --- IMPORTS CORRIGIDOS (Absolutos) ---
 from app.models import models
@@ -11,15 +12,59 @@ from app.dependencies import get_db, get_current_user
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 # --- LISTAR ---
+# --- LISTAR (COM PAGINAÇÃO E FILTROS) ---
 @router.get("/", response_model=List[schemas.TransactionResponse])
-def read_transactions(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    account_ids = [acc.id for acc in current_user.accounts]
-    return db.query(models.Transaction).options(
-            joinedload(models.Transaction.transaction_type),
-            joinedload(models.Transaction.sub_category),
-            joinedload(models.Transaction.asset)
-        ).filter(models.Transaction.account_id.in_(account_ids))\
-        .order_by(models.Transaction.date.desc()).limit(100).all()
+def read_transactions(
+    skip: int = 0,
+    limit: int = 50,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    search: Optional[str] = None,
+    account_id: Optional[int] = None,
+    transaction_type_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Base Query: Começamos por filtrar apenas transações das contas do utilizador
+    # (Para segurança, confirmamos sempre quais as contas que pertencem ao user)
+    user_account_ids = [acc.id for acc in current_user.accounts]
+    
+    query = db.query(models.Transaction).filter(
+        models.Transaction.account_id.in_(user_account_ids)
+    )
+
+    # 2. Filtro de Conta Específica (Se o user selecionou uma conta no dropdown)
+    if account_id:
+        if account_id not in user_account_ids:
+            # Se tentar filtrar por uma conta que não é dele, devolvemos lista vazia ou erro
+            return [] 
+        query = query.filter(models.Transaction.account_id == account_id)
+
+    # 3. Filtros de Data
+    if start_date:
+        query = query.filter(models.Transaction.date >= start_date)
+    if end_date:
+        query = query.filter(models.Transaction.date <= end_date)
+
+    # 4. Filtro por Tipo (Ex: Só Despesas)
+    if transaction_type_id:
+        query = query.filter(models.Transaction.transaction_type_id == transaction_type_id)
+
+    # 5. Pesquisa de Texto (Case Insensitive no PostgreSQL com ilike, no SQLite fazemos like)
+    if search:
+        # Nota: O 'ilike' é específico do Postgres. Se usares SQLite nos testes, usa 'like'.
+        # Para compatibilidade universal simples:
+        search_fmt = f"%{search}%"
+        query = query.filter(models.Transaction.description.like(search_fmt))
+
+    # 6. Ordenação, Eager Loading e Paginação
+    transactions = query.options(
+        joinedload(models.Transaction.transaction_type),
+        joinedload(models.Transaction.sub_category),
+        joinedload(models.Transaction.asset)
+    ).order_by(models.Transaction.date.desc()).offset(skip).limit(limit).all()
+
+    return transactions
 
 # --- CRIAR ---
 @router.post("/", response_model=schemas.TransactionResponse, status_code=status.HTTP_201_CREATED)

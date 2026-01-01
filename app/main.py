@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 # --- IMPORTS CORRIGIDOS (Absolutos) ---
-from app.routers import users, transactions, portfolio, setup, analytics, categories
+from app.routers import users, transactions, portfolio, setup, analytics, categories, imports
 from app.database.database import engine, get_db
 from app.models import models
 from app.auth import get_current_user
@@ -31,6 +31,7 @@ app.include_router(portfolio.router)
 app.include_router(setup.router)
 app.include_router(analytics.router)
 app.include_router(categories.router)
+app.include_router(imports.router)
 
 # --- ROTA QUE FALTAVA (Histórico) ---
 # O Frontend chama /history na raiz, por isso definimos aqui
