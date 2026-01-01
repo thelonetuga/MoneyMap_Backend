@@ -1,10 +1,11 @@
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.database.database import Base, SessionLocal, engine
+from app.models import User, Account, Transaction, Category, SubCategory, UserProfile, AccountType, TransactionType
 from app.auth import get_password_hash
-from app.models import Transaction, Account, User , UserProfile,Category, SubCategory, TransactionType,AssetPrice, Holding,Account, AccountType
 
-
-# 1. Garantir que as tabelas existem na BD
+# 1. Garantir que as tabelas existem (serão recriadas após o drop)
+# Nota: O create_all só cria se não existirem, por isso fazemos drop manual primeiro
 Base.metadata.create_all(bind=engine)
 
 def seed_data():
@@ -13,35 +14,47 @@ def seed_data():
     print("🌱 A iniciar a Seed...")
 
     # ---------------------------------------------------------
-    # 2. LIMPEZA (ORDEM CORRIGIDA 🛠️)
+    # 2. NUCLEAR CLEANUP (Resolver tabelas fantasma) ☢️
     # ---------------------------------------------------------
-    # Primeiro apagamos tudo o que depende de outras tabelas
-    db.query(Transaction).delete()    # Depende de Account e SubCategory
-    db.query(Holding).delete()        # Depende de Account e Asset
-    db.query(AssetPrice).delete()     # Depende de Asset (se tiveres esta tabela)
-    db.query(SubCategory).delete()    # Depende de Category
-    
-    # Agora podemos apagar as Categorias (que dependem do User)
-    db.query(Category).delete()       
-    
-    # Agora as Contas (que dependem do User)
-    db.query(Account).delete()
-    
-    # Perfis (que dependem do User)
-    db.query(UserProfile).delete()
-    
-    # FINALMENTE, podemos apagar os Users (agora que não têm dependências)
-    db.query(User).delete()
-    
-    # Tipos estáticos
-    db.query(TransactionType).delete()
-    db.query(AccountType).delete()
-    
-    db.commit()
-    print("🧹 Base de dados limpa com sucesso.")
+    # Vamos forçar a remoção de tabelas antigas que possam estar a causar conflitos
+    # O CASCADE garante que removemos as constraints de Foreign Key
+    print("🧹 A executar limpeza profunda...")
+    try:
+        # Tenta apagar tabelas antigas (com underscore) e novas
+        statements = [
+            "DROP TABLE IF EXISTS sub_categories CASCADE",  # A culpada!
+            "DROP TABLE IF EXISTS subcategories CASCADE",
+            "DROP TABLE IF EXISTS transactions CASCADE",
+            "DROP TABLE IF EXISTS holdings CASCADE",
+            "DROP TABLE IF EXISTS asset_prices CASCADE",
+            "DROP TABLE IF EXISTS assets CASCADE",
+            "DROP TABLE IF EXISTS categories CASCADE",
+            "DROP TABLE IF EXISTS user_profiles CASCADE",
+            "DROP TABLE IF EXISTS accounts CASCADE",
+            "DROP TABLE IF EXISTS users CASCADE",
+            "DROP TABLE IF EXISTS transaction_types CASCADE",
+            "DROP TABLE IF EXISTS account_types CASCADE",
+            "DROP TABLE IF EXISTS alembic_version CASCADE" # Se usares alembic
+        ]
+        
+        for statement in statements:
+            db.execute(text(statement))
+        
+        db.commit()
+        print("   ✅ Tabelas removidas com sucesso.")
+        
+    except Exception as e:
+        print(f"   ⚠️ Aviso na limpeza (pode ser ignorado se for a 1ª vez): {e}")
+        db.rollback()
 
     # ---------------------------------------------------------
-    # 3. DADOS ESTÁTICOS
+    # 3. RECRIAR TABELAS (Schema Limpo)
+    # ---------------------------------------------------------
+    print("🏗️  A recriar tabelas...")
+    Base.metadata.create_all(bind=engine)
+
+    # ---------------------------------------------------------
+    # 4. DADOS ESTÁTICOS
     # ---------------------------------------------------------
     acc_types = [
         AccountType(id=1, name="Conta à Ordem"), 
@@ -61,7 +74,7 @@ def seed_data():
     db.commit()
 
     # ---------------------------------------------------------
-    # 4. UTILIZADORES E PERFIS (RBAC)
+    # 5. UTILIZADORES E PERFIS
     # ---------------------------------------------------------
     common_password = get_password_hash("123") 
     
@@ -97,7 +110,7 @@ def seed_data():
             role=u_data["role"]
         )
         db.add(user)
-        db.commit() # Commit para gerar user.id
+        db.commit()
         db.refresh(user)
         
         # B. Criar Perfil
@@ -127,12 +140,12 @@ def seed_data():
             )
             db.add(acc2)
 
-        # D. Criar Categorias Padrão
+        # D. Criar Categorias
         cat_casa = Category(user_id=user.id, name="Casa")
         cat_lazer = Category(user_id=user.id, name="Lazer")
         db.add(cat_casa)
         db.add(cat_lazer)
-        db.commit() # Gerar IDs das categorias
+        db.commit()
 
         # Subcategorias
         db.add(SubCategory(category_id=cat_casa.id, name="Renda"))

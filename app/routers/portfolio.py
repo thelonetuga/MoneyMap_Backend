@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 # --- IMPORTS CORRIGIDOS ---
-from app.models import User , AssetPrice
+from app.models import User , AssetPrice, Asset
 from app.schemas import schemas
 from app.database.database import get_db
 from app.auth import get_current_user
