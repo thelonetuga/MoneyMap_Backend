@@ -9,7 +9,7 @@ from models.models import (
     Category, SubCategory, Transaction, TransactionType, 
     Asset, AssetPrice, Holding
 )
-from app.auth import get_password_hash 
+from auth import get_password_hash 
 
 def clean_database(db):
     print("🧹 A limpar base de dados antiga (TRUNCATE)...")

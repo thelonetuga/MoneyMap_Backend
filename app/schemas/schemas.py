@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import date, datetime
 from typing import Optional, List
 
@@ -9,8 +9,7 @@ class AccountTypeBase(BaseModel):
 
 class AccountTypeResponse(AccountTypeBase):
     id: int
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TransactionTypeBase(BaseModel):
     name: str
@@ -18,8 +17,7 @@ class TransactionTypeBase(BaseModel):
 
 class TransactionTypeResponse(TransactionTypeBase):
     id: int
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- 2. PERFIL E UTILIZADOR ---
@@ -35,8 +33,7 @@ class UserProfileCreate(UserProfileBase):
 class UserProfileResponse(UserProfileBase):
     id: int
     user_id: int
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserBase(BaseModel):
     email: str
@@ -51,8 +48,7 @@ class UserResponse(UserBase):
     created_at: datetime
     profile: Optional[UserProfileResponse] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- 3. CATEGORIAS ---
@@ -66,8 +62,7 @@ class SubCategoryCreate(SubCategoryBase):
 class SubCategoryResponse(SubCategoryBase):
     id: int
     category_id: int
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CategoryBase(BaseModel):
     name: str
@@ -81,8 +76,7 @@ class CategoryResponse(CategoryBase):
     # Inclui a lista de subcategorias automaticamente
     sub_categories: List[SubCategoryResponse] = []
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- 4. ATIVOS (ASSETS) ---
@@ -97,8 +91,7 @@ class AssetCreate(AssetBase):
 
 class AssetResponse(AssetBase):
     id: int
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- 5. CONTAS ---
@@ -116,8 +109,7 @@ class AccountResponse(AccountBase):
     user_id: int
     account_type: AccountTypeResponse # Devolve o objeto completo (nome, id)
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- 6. HOLDINGS (Carteira) ---
@@ -131,8 +123,7 @@ class HoldingResponse(HoldingBase):
     account_id: int
     asset: AssetResponse # Útil para mostrar o símbolo no frontend
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- 7. TRANSAÇÕES (O Coração do Sistema) ---
@@ -158,19 +149,16 @@ class TransactionResponse(TransactionBase):
     id: int
     account_id: int
     
-    # --- ADICIONE ESTAS 3 LINHAS ---
-    transaction_type_id: int          # <--- O QUE ESTAVA A FALTAR
+    transaction_type_id: int
     sub_category_id: Optional[int] = None
     asset_id: Optional[int] = None
-    # -------------------------------
 
     # Objetos Aninhados (Mantêm-se, são ótimos para a listagem)
     transaction_type: TransactionTypeResponse
     sub_category: Optional[SubCategoryResponse] = None
     asset: Optional[AssetResponse] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- 8. RELATÓRIOS (Não são tabelas, são cálculos) ---
@@ -183,16 +171,12 @@ class PortfolioPosition(BaseModel):
     total_value: float
     profit_loss: float
 
-# No final do ficheiro schemas.py
-
 class PortfolioResponse(BaseModel):
     user_id: int
     total_net_worth: float      # O Grande Total (Bancos + Investimentos)
     total_cash: float           # Apenas contas bancárias
     total_invested: float       # Apenas ações/crypto
     positions: List[PortfolioPosition]
-
-# Adicionar no schemas.py
 
 class HistoryPoint(BaseModel):
     date: str   # "2023-11-01"
