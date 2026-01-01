@@ -1,5 +1,5 @@
 import pytest
-from app.models.models import Account
+from app.models import Account
 
 # Fixture auxiliar para criar uma conta rapidamente
 @pytest.fixture

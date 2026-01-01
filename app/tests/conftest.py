@@ -6,9 +6,8 @@ from fastapi.testclient import TestClient
 
 # --- IMPORTS CORRIGIDOS ---
 from app.main import app
-from app.database.database import get_db
-from app.models.models import Base, TransactionType, AccountType  
-from app.auth import create_access_token
+from app.database.database import Base, get_db
+from app.models import AccountType, TransactionType
 
 # 1. Configurar DB SQLite em Memória (Rápida e isolada)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"

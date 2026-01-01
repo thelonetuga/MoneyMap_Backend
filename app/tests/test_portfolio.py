@@ -1,6 +1,6 @@
-import pytest
-from app.models.models import Asset, Holding, AssetPrice
 from datetime import date
+from app.models import Asset, Holding, AssetPrice
+
 
 def test_portfolio_calculation(client, auth_headers, db_session):
     # 1. Setup: Criar Ativo (Apple)

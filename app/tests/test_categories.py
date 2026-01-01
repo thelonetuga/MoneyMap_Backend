@@ -1,5 +1,5 @@
-import pytest
-from app.models.models import Category, SubCategory
+from app.models import Category, SubCategory
+
 
 def test_create_and_delete_subcategory(client, auth_headers, db_session):
     # 1. Criar Categoria Pai (seed ou manual)

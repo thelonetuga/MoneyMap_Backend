@@ -13,7 +13,7 @@ router = APIRouter(tags=["categories"])
 @router.get("/categories", response_model=List[schemas.CategoryResponse])
 def read_categories(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Categorias do User + Globais
-    return db.query(Category).options(joinedload(Category.sub_categories)).filter(
+    return db.query(Category).options(joinedload(Category.subcategories)).filter(
         (Category.user_id == current_user.id) | (Category.user_id == None)
     ).all()
 

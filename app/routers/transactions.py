@@ -62,8 +62,7 @@ def read_transactions(
     # 6. Ordenação, Eager Loading e Paginação
     transactions = query.options(
         joinedload(Transaction.transaction_type),
-        joinedload(Transaction.sub_category),
-        joinedload(Transaction.asset)
+        joinedload(Transaction.subcategory)
     ).order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
 
     return transactions
@@ -103,7 +102,7 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
             if holding.quantity < 0: holding.quantity = 0
 
     # Compatibilidade Pydantic v2
-    tx_data = tx.model_dump() if hasattr(tx, 'model_dump') else tx.dict()
+    tx_data = tx.model_dump() if hasattr(tx, 'model_dump') else tx.model_dump() 
     db_tx = Transaction(**tx_data)
     
     db.add(db_tx)
@@ -175,7 +174,7 @@ def update_transaction(transaction_id: int, updated_tx: schemas.TransactionCreat
     # (Lógica de Holdings omitida para brevidade, mas seria semelhante ao delete)
 
     # 5. ATUALIZAR DADOS DO OBJETO
-    tx_data = updated_tx.model_dump() if hasattr(updated_tx, 'model_dump') else updated_tx.dict()
+    tx_data = updated_tx.model_dump() if hasattr(updated_tx, 'model_dump') else updated_tx.model_dump() 
     for key, value in tx_data.items():
         setattr(db_tx, key, value)
     

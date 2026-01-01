@@ -24,6 +24,9 @@ class SubCategory(Base):
     name = Column(String)
 
     category = relationship("Category", back_populates="subcategories")
+    
+    # --- NOVO: Relação inversa para sabermos as transações desta subcategoria ---
+    transactions = relationship("Transaction", back_populates="subcategory") 
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -37,7 +40,8 @@ class Transaction(Base):
     transaction_type_id = Column(Integer, ForeignKey("transaction_types.id"))
     subcategory_id = Column(Integer, ForeignKey("subcategories.id"), nullable=True)
 
-    # Strings mágicas
     account = relationship("Account", back_populates="transactions")
     transaction_type = relationship("TransactionType")
-    subcategory = relationship("SubCategory")
+    
+    # --- ATUALIZADO: Adicionado back_populates ---
+    subcategory = relationship("SubCategory", back_populates="transactions")

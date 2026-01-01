@@ -18,7 +18,7 @@ def get_spending_breakdown(db: Session = Depends(get_db), current_user: User = D
     
     transactions = db.query(Transaction)\
         .join(TransactionType)\
-        .options(joinedload(Transaction.sub_category).joinedload(SubCategory.category))\
+        .options(joinedload(Transaction.subcategory).joinedload(SubCategory.category))\
         .filter(Transaction.account_id.in_(account_ids))\
         .filter(Transaction.date >= start_date)\
         .all()
@@ -27,8 +27,8 @@ def get_spending_breakdown(db: Session = Depends(get_db), current_user: User = D
     for tx in transactions:
         negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
         if any(word in tx.transaction_type.name for word in negative_keywords):
-            if tx.sub_category and tx.sub_category.category:
-                cat_name = tx.sub_category.category.name
+            if tx.subcategory and tx.subcategory.category:
+                cat_name = tx.subcategory.category.name
             else:
                 cat_name = "Outros / Sem Categoria"
             spending[cat_name] = spending.get(cat_name, 0) + tx.amount
