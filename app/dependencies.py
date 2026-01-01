@@ -1,11 +1,22 @@
 # app/dependencies.py
-from fastapi import Depends
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, status
+from typing import List
+from app.auth import get_current_user
+from app.models import models
 
-# IMPORTANTE: Importar das fontes originais para garantir que o override dos testes funciona
-from app.database.database import get_db
-from app.auth import get_current_user, oauth2_scheme
+# Classe reutilizável para verificar roles
+class RoleChecker:
+    def __init__(self, allowed_roles: List[str]):
+        self.allowed_roles = allowed_roles
 
-# (Opcional) Se precisares de dependências extra no futuro, coloca-as aqui.
-# Por agora, isto garante que quem importar de 'app.dependencies' 
-# recebe as mesmas funções que o 'conftest.py' está a controlar.
+    def __call__(self, user: models.User = Depends(get_current_user)):
+        if user.role not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Operação permitida apenas para utilizadores Premium ou Admin."
+            )
+        return user
+
+# Atalhos para usar nas rotas
+require_admin = RoleChecker(["admin"])
+require_premium = RoleChecker(["premium", "admin"]) # Admin também pode fazer coisas de premium

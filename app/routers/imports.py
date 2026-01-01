@@ -8,6 +8,7 @@ from datetime import datetime
 from app.database.database import get_db
 from app.models import models
 from app.auth import get_current_user
+from app.dependencies import get_db, get_current_user, require_premium # <--- Importar
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
@@ -16,7 +17,7 @@ async def upload_transactions(
     account_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_premium)
 ):
     # 1. Validar se a Conta pertence ao User
     account = db.query(models.Account).filter(models.Account.id == account_id).first()

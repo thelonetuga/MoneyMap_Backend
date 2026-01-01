@@ -46,6 +46,7 @@ class UserCreate(UserBase):
 class UserResponse(UserBase):
     id: int
     created_at: datetime
+    role: str
     profile: Optional[UserProfileResponse] = None
     
     model_config = ConfigDict(from_attributes=True)

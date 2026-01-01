@@ -1,6 +1,6 @@
 from typing import List, Optional
 from datetime import date as dt_date, datetime
-from sqlalchemy import String, Float, ForeignKey, Integer, Boolean, Text
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Date, DateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -37,6 +37,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String)
+    # Valores esperados: "basic", "premium", "admin"
+    role = Column(String, default="basic")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     # Relações
