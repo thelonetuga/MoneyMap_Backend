@@ -2,13 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-# --- CORREÇÃO: Usar importações ABSOLUTAS (começando por app.) ---
+# --- IMPORTS CORRIGIDOS ---
 from app.models import models
 from app.schemas import schemas
 from app.database.database import get_db
-# Removi a importação duplicada de get_db que tinha aqui
-from app.dependencies import get_current_user 
-from app.auth import verify_password, create_access_token, get_password_hash
+# MUDANÇA: Importar get_current_user diretamente de app.auth
+from app.auth import verify_password, create_access_token, get_password_hash, get_current_user
 
 router = APIRouter(tags=["users"])
 
@@ -36,7 +35,7 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     
     if user.profile:
-        # Pydantic v2: use model_dump()
+        # Compatibilidade Pydantic v2
         profile_data = user.profile.model_dump() if hasattr(user.profile, 'model_dump') else user.profile.dict()
         db_profile = models.UserProfile(**profile_data, user_id=db_user.id)
         db.add(db_profile)
