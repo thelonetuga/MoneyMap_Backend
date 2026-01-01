@@ -4,10 +4,8 @@ from typing import List, Optional
 from datetime import date
 
 # --- IMPORTS CORRIGIDOS (Absolutos) ---
-from app.models.account import Account
-from app.models.asset import Holding
-from app.models.transaction import Transaction, TransactionType
-from app.models.user import User
+from app.models import Transaction, Account, User , TransactionType,Holding,Account
+
 from app.schemas import schemas
 from app.dependencies import get_db, get_current_user
 # --------------------------------------

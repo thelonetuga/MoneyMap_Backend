@@ -4,8 +4,7 @@ from typing import List
 
 # --- IMPORTS CORRIGIDOS ---
 
-from app.models.transaction import Category, SubCategory
-from app.models.user import User
+from app.models import User , Category, SubCategory
 from app.schemas import schemas
 from app.database.database import get_db
 from app.auth import get_current_user

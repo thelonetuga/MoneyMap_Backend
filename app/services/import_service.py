@@ -1,11 +1,11 @@
 import pandas as pd
 from io import BytesIO
-from sqlalchemy import Transaction
 from sqlalchemy.orm import Session
 from fastapi import UploadFile
 
-from app.models.account import Account
-from app.models.transaction import TransactionType
+# ✅ Forma Correta
+from app.models import Transaction, Account, TransactionType
+
 
 class ImportService:
     @staticmethod

@@ -1,11 +1,8 @@
-from sqlalchemy import Transaction
 from sqlalchemy.orm import Session
 from app.database.database import Base, SessionLocal, engine
 from app.auth import get_password_hash
-from app.models.account import Account, AccountType
-from app.models.asset import AssetPrice, Holding
-from app.models.transaction import Category, SubCategory, TransactionType
-from app.models.user import User, UserProfile
+from app.models import Transaction, Account, User , UserProfile,Category, SubCategory, TransactionType,AssetPrice, Holding,Account, AccountType
+
 
 # 1. Garantir que as tabelas existem na BD
 Base.metadata.create_all(bind=engine)

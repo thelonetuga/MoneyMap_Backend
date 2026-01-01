@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 # --- IMPORTS CORRIGIDOS ---
-from app.models.user import User, UserProfile
+from app.models import User , UserProfile
 from app.schemas import schemas
 from app.database.database import get_db
 # MUDANÇA: Importar get_current_user diretamente de app.auth

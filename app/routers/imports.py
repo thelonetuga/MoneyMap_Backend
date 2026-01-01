@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.dependencies import require_premium 
-from app.models.account import Account
-from app.models.user import User
+from app.models import Account, User , Account
 from app.services.import_service import ImportService # <--- Importar Serviço
 
 router = APIRouter(prefix="/imports", tags=["imports"])

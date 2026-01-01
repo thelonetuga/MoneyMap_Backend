@@ -2,7 +2,7 @@
 from fastapi import Depends, HTTPException, status
 from typing import List
 from app.auth import get_current_user
-from app.models.user import User
+from app.models import User
 
 
 # Classe reutilizável para verificar roles

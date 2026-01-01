@@ -1,13 +1,11 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 from datetime import date, timedelta
-from typing import List
 
 # --- IMPORTS CORRIGIDOS ---
 
 from app.dependencies import get_db, get_current_user
-from app.models.transaction import SubCategory, Transaction, TransactionType
-from app.models.user import User
+from app.models import Transaction, User , SubCategory, TransactionType
 # --------------------------
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])

@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
 
 # --- IMPORTS CORRIGIDOS ---
-from app.models.asset import Asset, AssetPrice
-from app.models.user import User
+from app.models import User , AssetPrice
 from app.schemas import schemas
 from app.database.database import get_db
 from app.auth import get_current_user
