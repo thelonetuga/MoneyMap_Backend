@@ -6,9 +6,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-# --- IMPORTS CORRIGIDOS (Absolutos) ---
-from app.database.database import get_db
-from app.models import models
+from database.database import get_db
+from models import models
 # --------------------------------------
 
 # Chave Secreta (EM PRODUÇÃO, USAR VARIÁVEIS DE AMBIENTE!)

@@ -1,210 +1,155 @@
-import random
-from datetime import date, timedelta
-from sqlalchemy import text
-
-# --- CORREÇÃO: Usar 'app.' para bater certo com os outros ficheiros ---
+from sqlalchemy.orm import Session
 from app.database.database import SessionLocal, engine
-from app.models.models import (
-    Base, User, UserProfile, Account, AccountType, 
-    Category, SubCategory, Transaction, TransactionType, 
-    Asset, AssetPrice, Holding
-)
+from app.models import models
 from app.auth import get_password_hash
 
-def clean_database(db):
-    print("🧹 A limpar base de dados antiga (TRUNCATE)...")
-    try:
-        # TRUNCATE CASCADE: A forma mais violenta e eficaz de limpar tabelas no Postgres.
-        # Apaga os dados e reinicia os contadores de ID (RESTART IDENTITY).
-        # Nota: As tabelas devem estar no plural, conforme definido no SQLAlchemy (ex: 'users', 'assets')
-        
-        tables = [
-            "transactions", "holdings", "asset_prices", 
-            "sub_categories", "categories", 
-            "accounts", "user_profiles", "users", 
-            "assets", "account_types", "transaction_types"
-        ]
-        
-        # Montar a string SQL
-        sql_command = f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE;"
-        
-        db.execute(text(sql_command))
-        db.commit()
-        print("✨ Base de dados limpa com sucesso.")
-        
-    except Exception as e:
-        print(f"⚠️ Erro ao limpar (se for a primeira vez, ignore): {e}")
-        db.rollback()
+# 1. Garantir que as tabelas existem na BD
+models.Base.metadata.create_all(bind=engine)
 
-def create_dummy_data():
-    db = SessionLocal()
+def seed_data():
+    db: Session = SessionLocal()
     
-    # 1. Limpar tudo primeiro
-    clean_database(db)
-    
-    print("🌱 A semear novos dados...")
+    print("🌱 A iniciar a Seed...")
 
-    # --- 2. CONFIGURAÇÕES (TYPES) ---
+    # ---------------------------------------------------------
+    # 2. LIMPEZA (ORDEM CORRIGIDA 🛠️)
+    # ---------------------------------------------------------
+    # Primeiro apagamos tudo o que depende de outras tabelas
+    db.query(models.Transaction).delete()    # Depende de Account e SubCategory
+    db.query(models.Holding).delete()        # Depende de Account e Asset
+    db.query(models.AssetPrice).delete()     # Depende de Asset (se tiveres esta tabela)
+    db.query(models.SubCategory).delete()    # Depende de Category
+    
+    # Agora podemos apagar as Categorias (que dependem do User)
+    db.query(models.Category).delete()       
+    
+    # Agora as Contas (que dependem do User)
+    db.query(models.Account).delete()
+    
+    # Perfis (que dependem do User)
+    db.query(models.UserProfile).delete()
+    
+    # FINALMENTE, podemos apagar os Users (agora que não têm dependências)
+    db.query(models.User).delete()
+    
+    # Tipos estáticos
+    db.query(models.TransactionType).delete()
+    db.query(models.AccountType).delete()
+    
+    db.commit()
+    print("🧹 Base de dados limpa com sucesso.")
+
+    # ---------------------------------------------------------
+    # 3. DADOS ESTÁTICOS
+    # ---------------------------------------------------------
     acc_types = [
-        AccountType(name="Conta à Ordem"),    # ID 1
-        AccountType(name="Poupança"),         # ID 2
-        AccountType(name="Corretora"),        # ID 3
-        AccountType(name="Wallet Crypto")     # ID 4
+        models.AccountType(id=1, name="Conta à Ordem"), 
+        models.AccountType(id=2, name="Investimento"),
+        models.AccountType(id=3, name="Poupança"),
+        models.AccountType(id=4, name="Crypto Wallet")
     ]
     db.add_all(acc_types)
     
     tx_types = [
-        TransactionType(name="Despesa", is_investment=False),            # ID 1
-        TransactionType(name="Receita", is_investment=False),            # ID 2
-        TransactionType(name="Compra Investimento", is_investment=True), # ID 3
-        TransactionType(name="Venda Investimento", is_investment=True)   # ID 4
+        models.TransactionType(id=1, name="Despesa", is_investment=False), 
+        models.TransactionType(id=2, name="Receita", is_investment=False),
+        models.TransactionType(id=3, name="Compra Ativo", is_investment=True),
+        models.TransactionType(id=4, name="Venda Ativo", is_investment=True)
     ]
     db.add_all(tx_types)
     db.commit()
 
-    # Guardar referências
-    t_expense = tx_types[0]
-    t_income = tx_types[1]
-    t_buy = tx_types[2]
-
-    # --- 3. UTILIZADOR & LOGIN ---
-    print("🔐 A criar utilizador seguro...")
-    password_encriptada = get_password_hash("123456")
+    # ---------------------------------------------------------
+    # 4. UTILIZADORES E PERFIS (RBAC)
+    # ---------------------------------------------------------
+    common_password = get_password_hash("123") 
     
-    user = User(email="joao@email.com", password_hash=password_encriptada)
-    db.add(user)
-    db.commit()
-    
-    profile = UserProfile(user_id=user.id, first_name="João", last_name="Silva", preferred_currency="EUR")
-    db.add(profile)
-    db.commit()
-
-    # --- 4. CATEGORIAS ---
-    cats_dict = {
-        "Casa": ["Renda", "Luz & Água", "Internet", "Limpeza"],
-        "Alimentação": ["Supermercado", "Restaurantes", "Uber Eats"],
-        "Transporte": ["Combustível", "Uber", "Manutenção"],
-        "Lazer": ["Cinema", "Subscrições (Netflix)", "Viagens"],
-        "Rendimento": ["Salário", "Freelance", "Dividendos"]
-    }
-    
-    subcats_map = {} 
-    
-    for c_name, subs in cats_dict.items():
-        cat = Category(name=c_name, user_id=user.id)
-        db.add(cat)
-        db.commit()
-        for s_name in subs:
-            sub = SubCategory(name=s_name, category_id=cat.id)
-            db.add(sub)
-            subcats_map[s_name] = sub
-    db.commit()
-
-    # --- 5. ATIVOS & HISTÓRICO ---
-    print("📈 A simular mercado financeiro...")
-    assets_data = [
-        ("AAPL", "Apple Inc.", 175.00),
-        ("TSLA", "Tesla", 240.00),
-        ("VWCE", "Vanguard All-World ETF", 105.00),
-        ("BTC", "Bitcoin", 41000.00),
-        ("ETH", "Ethereum", 2200.00)
+    users_data = [
+        {
+            "email": "basic@moneymap.com", 
+            "role": "basic", 
+            "first_name": "Zé", 
+            "last_name": "Básico",
+            "currency": "EUR"
+        },
+        {
+            "email": "premium@moneymap.com", 
+            "role": "premium", 
+            "first_name": "Ana", 
+            "last_name": "Premium",
+            "currency": "USD"
+        },
+        {
+            "email": "admin@moneymap.com", 
+            "role": "admin", 
+            "first_name": "Admin", 
+            "last_name": "Supremo",
+            "currency": "EUR"
+        }
     ]
-    
-    asset_objs = {}
-    
-    for symbol, name, base_price in assets_data:
-        asset = Asset(symbol=symbol, name=name, asset_type=("Crypto" if base_price > 1000 else "Stock"))
-        db.add(asset)
-        db.commit()
-        asset_objs[symbol] = asset
+
+    for u_data in users_data:
+        # A. Criar User
+        user = models.User(
+            email=u_data["email"], 
+            password_hash=common_password, 
+            role=u_data["role"]
+        )
+        db.add(user)
+        db.commit() # Commit para gerar user.id
+        db.refresh(user)
         
-        # Gerar 90 dias de preços
-        curr_price = base_price * 0.85 
-        for day in range(90, -1, -1):
-            date_price = date.today() - timedelta(days=day)
-            change = random.uniform(0.98, 1.03) 
-            curr_price = curr_price * change
-            db.add(AssetPrice(asset_id=asset.id, date=date_price, close_price=curr_price))
-    
-    db.commit()
-
-    # --- 6. CONTAS BANCÁRIAS ---
-    acc_banco = Account(name="Millennium BCP", current_balance=0, user_id=user.id, account_type_id=1)
-    acc_corretora = Account(name="XTB Invest", current_balance=0, user_id=user.id, account_type_id=3)
-    acc_crypto = Account(name="Binance", current_balance=0, user_id=user.id, account_type_id=4)
-    
-    db.add_all([acc_banco, acc_corretora, acc_crypto])
-    db.commit()
-
-    # --- 7. TRANSAÇÕES ---
-    print("💸 A simular a vida do João (3 Meses)...")
-    
-    start_date = date.today() - timedelta(days=90)
-    
-    # Depósito Inicial
-    initial_deposit = Transaction(
-        date=start_date, description="Saldo Inicial", amount=5000, 
-        account_id=acc_banco.id, transaction_type_id=t_income.id, sub_category_id=subcats_map["Salário"].id
-    )
-    acc_banco.current_balance += 5000
-    db.add(initial_deposit)
-
-    for day in range(1, 91):
-        current_date = start_date + timedelta(days=day)
+        # B. Criar Perfil
+        profile = models.UserProfile(
+            user_id=user.id,
+            first_name=u_data["first_name"],
+            last_name=u_data["last_name"],
+            preferred_currency=u_data["currency"]
+        )
+        db.add(profile)
         
-        # Salário
-        if current_date.day == 1:
-            amount = 2500.00
-            t = Transaction(date=current_date, description="Salário Google", amount=amount, account_id=acc_banco.id, transaction_type_id=t_income.id, sub_category_id=subcats_map["Salário"].id)
-            acc_banco.current_balance += amount
-            db.add(t)
-        
-        # Renda
-        if current_date.day == 2:
-            amount = 850.00
-            t = Transaction(date=current_date, description="Pagamento Renda", amount=amount, account_id=acc_banco.id, transaction_type_id=t_expense.id, sub_category_id=subcats_map["Renda"].id)
-            acc_banco.current_balance -= amount
-            db.add(t)
+        # C. Criar Contas
+        acc1 = models.Account(
+            user_id=user.id, 
+            name=f"Banco {u_data['first_name']}", 
+            account_type_id=1, 
+            current_balance=1500.00
+        )
+        db.add(acc1)
 
-        # Despesas Aleatórias
-        if random.random() < 0.4:
-            cat_choice = random.choice(["Supermercado", "Restaurantes", "Uber", "Luz & Água", "Cinema"])
-            amount = round(random.uniform(15.0, 150.0), 2)
-            t = Transaction(date=current_date, description=f"Compra {cat_choice}", amount=amount, account_id=acc_banco.id, transaction_type_id=t_expense.id, sub_category_id=subcats_map[cat_choice].id)
-            acc_banco.current_balance -= amount
-            db.add(t)
-
-        # Investimentos
-        if random.random() < 0.1:
-            acc_corretora.current_balance += 500
-            
-            price = 100.00 
-            qty = 2
-            cost = price * qty
-            
-            t = Transaction(
-                date=current_date, description="Compra VWCE", amount=cost, 
-                account_id=acc_corretora.id, transaction_type_id=t_buy.id, 
-                asset_id=asset_objs["VWCE"].id, quantity=qty, price_per_unit=price
+        if u_data["role"] in ["premium", "admin"]:
+            acc2 = models.Account(
+                user_id=user.id, 
+                name="Degiro / XTB", 
+                account_type_id=2, 
+                current_balance=5000.00
             )
-            acc_corretora.current_balance -= cost
-            db.add(t)
-            
-            h = db.query(Holding).filter(Holding.account_id==acc_corretora.id, Holding.asset_id==asset_objs["VWCE"].id).first()
-            if not h:
-                h = Holding(account_id=acc_corretora.id, asset_id=asset_objs["VWCE"].id, quantity=0, avg_buy_price=0)
-                db.add(h)
-            
-            total_val = (h.quantity * h.avg_buy_price) + cost
-            h.quantity += qty
-            h.avg_buy_price = total_val / h.quantity
+            db.add(acc2)
+
+        # D. Criar Categorias Padrão
+        cat_casa = models.Category(user_id=user.id, name="Casa")
+        cat_lazer = models.Category(user_id=user.id, name="Lazer")
+        db.add(cat_casa)
+        db.add(cat_lazer)
+        db.commit() # Gerar IDs das categorias
+
+        # Subcategorias
+        db.add(models.SubCategory(category_id=cat_casa.id, name="Renda"))
+        db.add(models.SubCategory(category_id=cat_casa.id, name="Supermercado"))
+        db.add(models.SubCategory(category_id=cat_lazer.id, name="Restaurantes"))
+        db.add(models.SubCategory(category_id=cat_lazer.id, name="Cinema"))
 
     db.commit()
     
-    print(f"💰 Saldo Banco: {acc_banco.current_balance:.2f}€")
-    print(f"📈 Saldo Corretora: {acc_corretora.current_balance:.2f}€")
-    print("✅ Seed concluído com sucesso!")
+    print("✅ Seed concluída com sucesso!")
+    print("------------------------------------------------")
+    print("🔑 Credenciais para Teste (Password: '123'):")
+    print("   1. Basic:   basic@moneymap.com")
+    print("   2. Premium: premium@moneymap.com")
+    print("   3. Admin:   admin@moneymap.com")
+    print("------------------------------------------------")
+    
     db.close()
 
 if __name__ == "__main__":
-    create_dummy_data()
+    seed_data()
