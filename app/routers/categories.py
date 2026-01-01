@@ -1,33 +1,37 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 
-# --- IMPORTS CORRIGIDOS ---
-
-from app.models import User , Category, SubCategory
+from app.models.transaction import Category, SubCategory
+from app.models.user import User
 from app.schemas import schemas
 from app.database.database import get_db
 from app.auth import get_current_user
-# --------------------------
 
 router = APIRouter(tags=["categories"])
 
 @router.get("/categories", response_model=List[schemas.CategoryResponse])
 def read_categories(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Categorias Globais (sem user_id) + Categorias do User
-    return db.query(Category).filter(
+    # Categorias do User + Globais
+    return db.query(Category).options(joinedload(Category.sub_categories)).filter(
         (Category.user_id == current_user.id) | (Category.user_id == None)
     ).all()
 
+# --- MOVIDO DO SETUP.PY ---
+@router.post("/categories/", response_model=schemas.CategoryResponse)
+def create_category(category: schemas.CategoryCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db_cat = Category(**category.model_dump(), user_id=current_user.id)
+    db.add(db_cat)
+    db.commit()
+    db.refresh(db_cat)
+    return db_cat
+# --------------------------
+
 @router.post("/subcategories", response_model=schemas.SubCategoryResponse)
 def create_subcategory(sub: schemas.SubCategoryCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Verificar se a categoria pai pertence ao user ou é global
     parent = db.query(Category).filter(Category.id == sub.category_id).first()
     if not parent:
         raise HTTPException(status_code=404, detail="Categoria pai não encontrada")
-    
-    # Permitir adicionar subcategorias apenas às minhas categorias personalizadas? 
-    # Ou a globais também? Vamos assumir que sim por agora.
     
     sub_data = sub.model_dump() if hasattr(sub, 'model_dump') else sub.dict()
     db_sub = SubCategory(**sub_data)
@@ -38,11 +42,8 @@ def create_subcategory(sub: schemas.SubCategoryCreate, db: Session = Depends(get
 
 @router.delete("/subcategories/{sub_id}")
 def delete_subcategory(sub_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Impedir apagar se tiver transações
     sub = db.query(SubCategory).filter(SubCategory.id == sub_id).first()
     if not sub: raise HTTPException(status_code=404, detail="Não encontrada")
-    
-    # Verificar permissões (idealmente verificar se a categoria pai é do user)
     
     if sub.transactions:
          raise HTTPException(status_code=400, detail="Não pode apagar categoria com movimentos associados.")

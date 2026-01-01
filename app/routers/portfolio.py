@@ -80,10 +80,6 @@ def get_portfolio(db: Session = Depends(get_db), current_user: User = Depends(ge
         "positions": positions
     }
 
-@router.get("/accounts", response_model=List[schemas.AccountResponse])
-def read_accounts(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return current_user.accounts
-
 @router.get("/assets", response_model=List[schemas.AssetResponse])
 def read_assets(db: Session = Depends(get_db)):
     return db.query(Asset).all()

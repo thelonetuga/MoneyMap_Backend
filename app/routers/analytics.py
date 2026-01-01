@@ -4,7 +4,8 @@ from datetime import date, timedelta
 
 # --- IMPORTS CORRIGIDOS ---
 
-from app.dependencies import get_db, get_current_user
+from app.database.database import get_db
+from app.dependencies import  get_current_user
 from app.models import Transaction, User , SubCategory, TransactionType
 # --------------------------
 

@@ -4,10 +4,11 @@ from typing import List, Optional
 from datetime import date
 
 # --- IMPORTS CORRIGIDOS (Absolutos) ---
+from app.database.database import get_db
 from app.models import Transaction, Account, User , TransactionType,Holding,Account
 
 from app.schemas import schemas
-from app.dependencies import get_db, get_current_user
+from app.dependencies import get_current_user
 # --------------------------------------
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
