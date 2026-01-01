@@ -2,14 +2,14 @@ import random
 from datetime import date, timedelta
 from sqlalchemy import text
 
-# --- IMPORTS ---
-from database.database import SessionLocal, engine
-from models.models import (
+# --- CORREÇÃO: Usar 'app.' para bater certo com os outros ficheiros ---
+from app.database.database import SessionLocal, engine
+from app.models.models import (
     Base, User, UserProfile, Account, AccountType, 
     Category, SubCategory, Transaction, TransactionType, 
     Asset, AssetPrice, Holding
 )
-from auth import get_password_hash 
+from app.auth import get_password_hash
 
 def clean_database(db):
     print("🧹 A limpar base de dados antiga (TRUNCATE)...")

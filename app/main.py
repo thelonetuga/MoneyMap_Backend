@@ -1,9 +1,13 @@
-from routers import users, transactions, portfolio, setup, analytics, categories
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from database.database import engine
-import models.models as models
+from sqlalchemy.orm import Session
 
+# --- IMPORTS CORRIGIDOS (Absolutos) ---
+from app.routers import users, transactions, portfolio, setup, analytics, categories
+from app.database.database import engine, get_db
+from app.models import models
+from app.auth import get_current_user
+# --------------------------------------
 
 # Inicializar Base de Dados
 models.Base.metadata.create_all(bind=engine)
@@ -27,6 +31,14 @@ app.include_router(portfolio.router)
 app.include_router(setup.router)
 app.include_router(analytics.router)
 app.include_router(categories.router)
+
+# --- ROTA QUE FALTAVA (Histórico) ---
+# O Frontend chama /history na raiz, por isso definimos aqui
+@app.get("/history")
+def read_history_proxy(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    # Chama a função lógica que está dentro do analytics.py
+    return analytics.get_portfolio_history(db, current_user)
+# ------------------------------------
 
 @app.get("/")
 def root():
