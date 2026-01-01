@@ -1,36 +1,29 @@
-from app.models.asset import Holding
-from app.models.user import User
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
+from datetime import datetime
 from .base import Base
-from typing import List, Optional
-from datetime import date as dt_date, datetime
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Date, DateTime, Transaction
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
 
+class AccountType(Base):
+    __tablename__ = "account_types"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    
+    # Relação inversa (opcional, mas boa prática)
+    accounts = relationship("Account", back_populates="account_type")
 
 class Account(Base):
     __tablename__ = "accounts"
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String)
-    current_balance: Mapped[float] = mapped_column(Float, default=0.0)
-    currency_code: Mapped[str] = mapped_column(String, default="EUR")
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    current_balance = Column(Float, default=0.0)
     
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    account_type_id: Mapped[int] = mapped_column(ForeignKey("account_types.id"))
+    # Foreign Keys
+    user_id = Column(Integer, ForeignKey("users.id"))
+    account_type_id = Column(Integer, ForeignKey("account_types.id"))
 
-    user: Mapped["User"] = relationship(back_populates="accounts")
-    account_type: Mapped["AccountType"] = relationship(back_populates="accounts")
-    transactions: Mapped[List["Transaction"]] = relationship(back_populates="account")
-    holdings: Mapped[List["Holding"]] = relationship(back_populates="account")
-
-
-class AccountType(Base):
-    """Ex: Conta à Ordem, Poupança, Corretora, Wallet Crypto"""
-    __tablename__ = "account_types"
-    
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String, unique=True)
-    
-    accounts: Mapped[List["Account"]] = relationship(back_populates="account_type")
-
+    # Relações com STRING para evitar circular import
+    user = relationship("User", back_populates="accounts")
+    account_type = relationship("AccountType", back_populates="accounts")
+    transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
+    holdings = relationship("Holding", back_populates="account", cascade="all, delete-orphan")

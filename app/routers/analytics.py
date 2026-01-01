@@ -4,22 +4,24 @@ from datetime import date, timedelta
 from typing import List
 
 # --- IMPORTS CORRIGIDOS ---
-from app.models import models
+
 from app.dependencies import get_db, get_current_user
+from app.models.transaction import SubCategory, Transaction, TransactionType
+from app.models.user import User
 # --------------------------
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 @router.get("/spending")
-def get_spending_breakdown(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def get_spending_breakdown(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     start_date = date.today() - timedelta(days=30)
     account_ids = [acc.id for acc in current_user.accounts]
     
-    transactions = db.query(models.Transaction)\
-        .join(models.TransactionType)\
-        .options(joinedload(models.Transaction.sub_category).joinedload(models.SubCategory.category))\
-        .filter(models.Transaction.account_id.in_(account_ids))\
-        .filter(models.Transaction.date >= start_date)\
+    transactions = db.query(Transaction)\
+        .join(TransactionType)\
+        .options(joinedload(Transaction.sub_category).joinedload(SubCategory.category))\
+        .filter(Transaction.account_id.in_(account_ids))\
+        .filter(Transaction.date >= start_date)\
         .all()
 
     spending = {}
@@ -37,7 +39,7 @@ def get_spending_breakdown(db: Session = Depends(get_db), current_user: models.U
     return result
 
 # Função auxiliar para Histórico (chamada pelo main.py)
-def get_portfolio_history(db: Session, current_user: models.User):
+def get_portfolio_history(db: Session, current_user: User):
     today = date.today()
     account_ids = [acc.id for acc in current_user.accounts]
     current_cash = sum(acc.current_balance for acc in current_user.accounts)
@@ -48,9 +50,9 @@ def get_portfolio_history(db: Session, current_user: models.User):
     for i in range(30):
         target_date = today - timedelta(days=i)
         
-        daily_txs = db.query(models.Transaction).join(models.Transaction.transaction_type).filter(
-            models.Transaction.account_id.in_(account_ids),
-            models.Transaction.date == target_date
+        daily_txs = db.query(Transaction).join(Transaction.transaction_type).filter(
+            Transaction.account_id.in_(account_ids),
+            Transaction.date == target_date
         ).all()
 
         history_points.append({

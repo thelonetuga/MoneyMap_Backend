@@ -1,10 +1,14 @@
+from sqlalchemy import Transaction
 from sqlalchemy.orm import Session
-from app.database.database import SessionLocal, engine
-from app.models import models
+from app.database.database import Base, SessionLocal, engine
 from app.auth import get_password_hash
+from app.models.account import Account, AccountType
+from app.models.asset import AssetPrice, Holding
+from app.models.transaction import Category, SubCategory, TransactionType
+from app.models.user import User, UserProfile
 
 # 1. Garantir que as tabelas existem na BD
-models.Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 def seed_data():
     db: Session = SessionLocal()
@@ -15,26 +19,26 @@ def seed_data():
     # 2. LIMPEZA (ORDEM CORRIGIDA 🛠️)
     # ---------------------------------------------------------
     # Primeiro apagamos tudo o que depende de outras tabelas
-    db.query(models.Transaction).delete()    # Depende de Account e SubCategory
-    db.query(models.Holding).delete()        # Depende de Account e Asset
-    db.query(models.AssetPrice).delete()     # Depende de Asset (se tiveres esta tabela)
-    db.query(models.SubCategory).delete()    # Depende de Category
+    db.query(Transaction).delete()    # Depende de Account e SubCategory
+    db.query(Holding).delete()        # Depende de Account e Asset
+    db.query(AssetPrice).delete()     # Depende de Asset (se tiveres esta tabela)
+    db.query(SubCategory).delete()    # Depende de Category
     
     # Agora podemos apagar as Categorias (que dependem do User)
-    db.query(models.Category).delete()       
+    db.query(Category).delete()       
     
     # Agora as Contas (que dependem do User)
-    db.query(models.Account).delete()
+    db.query(Account).delete()
     
     # Perfis (que dependem do User)
-    db.query(models.UserProfile).delete()
+    db.query(UserProfile).delete()
     
     # FINALMENTE, podemos apagar os Users (agora que não têm dependências)
-    db.query(models.User).delete()
+    db.query(User).delete()
     
     # Tipos estáticos
-    db.query(models.TransactionType).delete()
-    db.query(models.AccountType).delete()
+    db.query(TransactionType).delete()
+    db.query(AccountType).delete()
     
     db.commit()
     print("🧹 Base de dados limpa com sucesso.")
@@ -43,18 +47,18 @@ def seed_data():
     # 3. DADOS ESTÁTICOS
     # ---------------------------------------------------------
     acc_types = [
-        models.AccountType(id=1, name="Conta à Ordem"), 
-        models.AccountType(id=2, name="Investimento"),
-        models.AccountType(id=3, name="Poupança"),
-        models.AccountType(id=4, name="Crypto Wallet")
+        AccountType(id=1, name="Conta à Ordem"), 
+        AccountType(id=2, name="Investimento"),
+        AccountType(id=3, name="Poupança"),
+        AccountType(id=4, name="Crypto Wallet")
     ]
     db.add_all(acc_types)
     
     tx_types = [
-        models.TransactionType(id=1, name="Despesa", is_investment=False), 
-        models.TransactionType(id=2, name="Receita", is_investment=False),
-        models.TransactionType(id=3, name="Compra Ativo", is_investment=True),
-        models.TransactionType(id=4, name="Venda Ativo", is_investment=True)
+        TransactionType(id=1, name="Despesa", is_investment=False), 
+        TransactionType(id=2, name="Receita", is_investment=False),
+        TransactionType(id=3, name="Compra Ativo", is_investment=True),
+        TransactionType(id=4, name="Venda Ativo", is_investment=True)
     ]
     db.add_all(tx_types)
     db.commit()
@@ -90,7 +94,7 @@ def seed_data():
 
     for u_data in users_data:
         # A. Criar User
-        user = models.User(
+        user = User(
             email=u_data["email"], 
             password_hash=common_password, 
             role=u_data["role"]
@@ -100,7 +104,7 @@ def seed_data():
         db.refresh(user)
         
         # B. Criar Perfil
-        profile = models.UserProfile(
+        profile = UserProfile(
             user_id=user.id,
             first_name=u_data["first_name"],
             last_name=u_data["last_name"],
@@ -109,7 +113,7 @@ def seed_data():
         db.add(profile)
         
         # C. Criar Contas
-        acc1 = models.Account(
+        acc1 = Account(
             user_id=user.id, 
             name=f"Banco {u_data['first_name']}", 
             account_type_id=1, 
@@ -118,7 +122,7 @@ def seed_data():
         db.add(acc1)
 
         if u_data["role"] in ["premium", "admin"]:
-            acc2 = models.Account(
+            acc2 = Account(
                 user_id=user.id, 
                 name="Degiro / XTB", 
                 account_type_id=2, 
@@ -127,17 +131,17 @@ def seed_data():
             db.add(acc2)
 
         # D. Criar Categorias Padrão
-        cat_casa = models.Category(user_id=user.id, name="Casa")
-        cat_lazer = models.Category(user_id=user.id, name="Lazer")
+        cat_casa = Category(user_id=user.id, name="Casa")
+        cat_lazer = Category(user_id=user.id, name="Lazer")
         db.add(cat_casa)
         db.add(cat_lazer)
         db.commit() # Gerar IDs das categorias
 
         # Subcategorias
-        db.add(models.SubCategory(category_id=cat_casa.id, name="Renda"))
-        db.add(models.SubCategory(category_id=cat_casa.id, name="Supermercado"))
-        db.add(models.SubCategory(category_id=cat_lazer.id, name="Restaurantes"))
-        db.add(models.SubCategory(category_id=cat_lazer.id, name="Cinema"))
+        db.add(SubCategory(category_id=cat_casa.id, name="Renda"))
+        db.add(SubCategory(category_id=cat_casa.id, name="Supermercado"))
+        db.add(SubCategory(category_id=cat_lazer.id, name="Restaurantes"))
+        db.add(SubCategory(category_id=cat_lazer.id, name="Cinema"))
 
     db.commit()
     

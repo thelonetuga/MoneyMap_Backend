@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List
 
 # --- IMPORTS CORRIGIDOS ---
-from app.models import models
+from app.models.asset import Asset, AssetPrice
+from app.models.user import User
 from app.schemas import schemas
 from app.database.database import get_db
 from app.auth import get_current_user
@@ -12,7 +13,7 @@ from app.auth import get_current_user
 router = APIRouter(tags=["portfolio"])
 
 @router.get("/portfolio", response_model=schemas.PortfolioResponse)
-def get_portfolio(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def get_portfolio(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Calcular Total de Dinheiro (Contas Bancárias)
     total_cash = sum(acc.current_balance for acc in current_user.accounts)
     
@@ -24,9 +25,9 @@ def get_portfolio(db: Session = Depends(get_db), current_user: models.User = Dep
             # 1. Determinar o Preço Atual
             # (Num sistema real, isto viria de uma cache ou API externa)
             current_price = holding.avg_buy_price 
-            last_price = db.query(models.AssetPrice).filter(
-                models.AssetPrice.asset_id == holding.asset_id
-            ).order_by(models.AssetPrice.date.desc()).first()
+            last_price = db.query(AssetPrice).filter(
+                AssetPrice.asset_id == holding.asset_id
+            ).order_by(AssetPrice.date.desc()).first()
             
             if last_price:
                 current_price = last_price.close_price
@@ -81,9 +82,9 @@ def get_portfolio(db: Session = Depends(get_db), current_user: models.User = Dep
     }
 
 @router.get("/accounts", response_model=List[schemas.AccountResponse])
-def read_accounts(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def read_accounts(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return current_user.accounts
 
 @router.get("/assets", response_model=List[schemas.AssetResponse])
 def read_assets(db: Session = Depends(get_db)):
-    return db.query(models.Asset).all()
+    return db.query(Asset).all()

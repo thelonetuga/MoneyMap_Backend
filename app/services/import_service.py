@@ -1,8 +1,11 @@
 import pandas as pd
 from io import BytesIO
+from sqlalchemy import Transaction
 from sqlalchemy.orm import Session
 from fastapi import UploadFile
-from app.models import models # Nota: Se já tiveres feito a Fase 3, muda para 'from app.models import Transaction, Account...'
+
+from app.models.account import Account
+from app.models.transaction import TransactionType
 
 class ImportService:
     @staticmethod
@@ -36,15 +39,15 @@ class ImportService:
             raise ValueError("Colunas 'Data' e 'Valor' não identificadas.")
 
         # Buscar tipos de transação
-        type_expense = db.query(models.TransactionType).filter(models.TransactionType.name.ilike("%Despesa%")).first()
-        type_income = db.query(models.TransactionType).filter(models.TransactionType.name.ilike("%Receita%")).first()
+        type_expense = db.query(TransactionType).filter(TransactionType.name.ilike("%Despesa%")).first()
+        type_income = db.query(TransactionType).filter(TransactionType.name.ilike("%Receita%")).first()
         expense_id = type_expense.id if type_expense else 1
         income_id = type_income.id if type_income else 2
 
         added_count = 0
         errors_count = 0
         
-        account = db.query(models.Account).filter(models.Account.id == account_id).first()
+        account = db.query(Account).filter(Account.id == account_id).first()
 
         # 3. Processar
         for _, row in df.iterrows():
@@ -76,15 +79,15 @@ class ImportService:
                     is_neg = False
 
                 # Duplicados
-                exists = db.query(models.Transaction).filter(
-                    models.Transaction.account_id == account_id,
-                    models.Transaction.date == dt,
-                    models.Transaction.amount == final_amount,
-                    models.Transaction.description == str(raw_desc)[:255]
+                exists = db.query(Transaction).filter(
+                    Transaction.account_id == account_id,
+                    Transaction.date == dt,
+                    Transaction.amount == final_amount,
+                    Transaction.description == str(raw_desc)[:255]
                 ).first()
 
                 if not exists:
-                    new_tx = models.Transaction(
+                    new_tx = Transaction(
                         date=dt, description=str(raw_desc)[:255], amount=final_amount,
                         account_id=account_id, transaction_type_id=tx_type
                     )
