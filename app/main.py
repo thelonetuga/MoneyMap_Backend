@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 # --- IMPORTS CORRIGIDOS (Absolutos) ---
 from app.routers import accounts, users, transactions, portfolio, setup, analytics, categories, imports
 from app.database.database import Base, engine, get_db
-from app.auth import get_current_user
+from app.utils.auth import get_current_user
 # --------------------------------------
 
 # Inicializar Base de Dados

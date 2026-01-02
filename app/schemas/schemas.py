@@ -43,6 +43,12 @@ class UserCreate(UserBase):
     # Opcional: Criar perfil logo no registo
     profile: Optional[UserProfileCreate] = None
 
+class UserUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    preferred_currency: Optional[str] = None
+    password: Optional[str] = None
+
 class UserResponse(UserBase):
     id: int
     created_at: datetime
@@ -136,6 +142,7 @@ class TransactionBase(BaseModel):
     # Campos de Investimento (Opcionais)
     quantity: Optional[float] = None
     price_per_unit: Optional[float] = None
+    symbol: Optional[str] = None  # <--- ESTE CAMPO FALTAVA! 🚨
 
 class TransactionCreate(TransactionBase):
     account_id: int
@@ -151,14 +158,12 @@ class TransactionResponse(TransactionBase):
     account_id: int
     
     transaction_type_id: int
-    # ALTERADO: Incluímos o category_id na resposta plana
     category_id: Optional[int] = None
     sub_category_id: Optional[int] = None
     asset_id: Optional[int] = None
 
     # Objetos Aninhados
     transaction_type: TransactionTypeResponse
-    # ALTERADO: Incluímos o objeto category completo
     category: Optional[CategoryResponse] = None
     sub_category: Optional[SubCategoryResponse] = None
     asset: Optional[AssetResponse] = None

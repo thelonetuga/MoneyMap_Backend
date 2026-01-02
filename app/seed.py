@@ -1,8 +1,8 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from app.database.database import Base, SessionLocal, engine
-from app.models import User, Account, Transaction, Category, SubCategory, UserProfile, AccountType, TransactionType
-from app.auth import get_password_hash
+from database.database import Base, SessionLocal, engine
+from models import User, Account, Category, SubCategory, UserProfile, AccountType, TransactionType
+from app.utils.auth import get_password_hash
 
 # 1. Garantir que as tabelas existem (serão recriadas após o drop)
 # Nota: O create_all só cria se não existirem, por isso fazemos drop manual primeiro

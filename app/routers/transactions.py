@@ -4,7 +4,8 @@ from typing import List, Optional
 from datetime import date
 
 from app.database.database import get_db
-from app.models import Transaction, Account, User, TransactionType, Holding, Category, SubCategory
+# ADICIONADO: Importar Asset para podermos criar/buscar ativos
+from app.models import Transaction, Account, User, TransactionType, Holding, Category, SubCategory, Asset
 from app.schemas import schemas
 from app.dependencies import get_current_user
 
@@ -50,13 +51,15 @@ def read_transactions(
         joinedload(Transaction.transaction_type),
         joinedload(Transaction.category),
         joinedload(Transaction.subcategory)
+        # joinedload(Transaction.asset) # Só descomentar se tiveres adicionado asset_id à Transação
     ).order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
 
     return transactions
 
-# --- CRIAR ---
+# --- CRIAR (LÓGICA CORRIGIDA) ---
 @router.post("/", response_model=schemas.TransactionResponse, status_code=status.HTTP_201_CREATED)
 def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # 1. Validar Conta
     account = db.query(Account).filter(Account.id == tx.account_id).first()
     if not account or account.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Não tem permissão para usar esta conta.")
@@ -64,38 +67,62 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
     tx_type = db.query(TransactionType).filter(TransactionType.id == tx.transaction_type_id).first()
     if not tx_type: raise HTTPException(status_code=404, detail="Tipo inválido")
 
-    # 1. Atualizar Saldo da Conta
-    negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
-    is_negative = any(word in tx_type.name for word in negative_keywords)
-    if is_negative: account.current_balance -= tx.amount
-    else: account.current_balance += tx.amount
-    
-    # 2. Lógica de Investimentos (Holdings)
-    if tx.asset_id and tx.quantity:
-        holding = db.query(Holding).filter(Holding.account_id == account.id, Holding.asset_id == tx.asset_id).first()
+    # 2. Lógica de Investimentos (A MÁGICA ACONTECE AQUI) 🎩✨
+    # Verificamos se veio Símbolo e Quantidade do frontend
+    if tx.symbol and tx.quantity:
+        symbol_upper = tx.symbol.upper()
+        
+        # Procura o ativo pelo símbolo
+        asset = db.query(Asset).filter(Asset.symbol == symbol_upper).first()
+        
+        # Se não existir, CRIA O ATIVO
+        if not asset:
+            initial_price = tx.amount / tx.quantity if tx.quantity > 0 else 0
+            asset = Asset(symbol=symbol_upper, name=symbol_upper, current_price=initial_price)
+            db.add(asset)
+            db.commit()
+            db.refresh(asset)
+        
+        # Atualizar Carteira (Holdings)
+        holding = db.query(Holding).filter(Holding.account_id == account.id, Holding.asset_id == asset.id).first()
         if not holding:
-            holding = Holding(account_id=account.id, asset_id=tx.asset_id, quantity=0, avg_buy_price=0)
+            holding = Holding(account_id=account.id, asset_id=asset.id, quantity=0, avg_buy_price=0)
             db.add(holding)
         
-        if "Compra" in tx_type.name or "Buy" in tx_type.name:
-            curr_val = holding.quantity * holding.avg_buy_price
-            new_val = tx.quantity * (tx.price_per_unit if tx.price_per_unit else (tx.amount/tx.quantity))
+        # Lógica de Compra vs Venda
+        negative_keywords = ["Despesa", "Saída", "Compra", "Buy"]
+        is_buy = any(k in tx_type.name for k in negative_keywords)
+        
+        if is_buy:
+            # Recalcular Preço Médio (Média Ponderada)
+            current_total_val = holding.quantity * holding.avg_buy_price
+            new_total_val = current_total_val + tx.amount
             holding.quantity += tx.quantity
             if holding.quantity > 0:
-                holding.avg_buy_price = (curr_val + new_val) / holding.quantity
-        elif "Venda" in tx_type.name or "Sell" in tx_type.name:
+                holding.avg_buy_price = new_total_val / holding.quantity
+        else:
+            # Venda
             holding.quantity -= tx.quantity
             if holding.quantity < 0: holding.quantity = 0
 
-    # 3. Preparar dados para a DB (CORREÇÃO DO ERRO TYPEERROR)
+    # 3. Atualizar Saldo da Conta
+    negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
+    is_negative = any(word in tx_type.name for word in negative_keywords)
+    
+    if is_negative: account.current_balance -= tx.amount
+    else: account.current_balance += tx.amount
+    
+    # 4. Preparar dados para a DB
     tx_data = tx.model_dump() if hasattr(tx, 'model_dump') else tx.model_dump()
     
-    # REMOVER campos que não existem na tabela 'transactions'
+    # LIMPEZA DE CAMPOS VIRTUAIS
+    # Removemos estes campos porque a tabela 'transactions' não tem colunas para eles
+    # (A informação do investimento ficou guardada na tabela 'holdings')
+    tx_data.pop('symbol', None)
     tx_data.pop('quantity', None)
     tx_data.pop('price_per_unit', None)
-    tx_data.pop('asset_id', None) # Removemos asset_id pois não existe no Model Transaction atual
+    tx_data.pop('asset_id', None) 
 
-    # CORRIGIR mapeamento de nomes (Schema -> Model)
     if 'sub_category_id' in tx_data:
         tx_data['subcategory_id'] = tx_data.pop('sub_category_id')
 
@@ -103,6 +130,10 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
     
     db.add(db_tx)
     db.add(account)
+    # Importante: só adicionamos holding se ela tiver sido criada/alterada
+    if 'holding' in locals(): 
+        db.add(holding)
+    
     db.commit()
     db.refresh(db_tx)
     return db_tx
@@ -125,9 +156,6 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db), curre
     if is_negative_originally: account.current_balance += tx.amount
     else: account.current_balance -= tx.amount
 
-    # Nota: Reverter Holdings seria complexo sem saber a 'quantity' original (que não guardámos na transação).
-    # Para MVP, ignoramos reversão de holding ao apagar, ou assumimos zero.
-    
     db.delete(tx)
     db.add(account)
     db.commit()
@@ -162,13 +190,15 @@ def update_transaction(transaction_id: int, updated_tx: schemas.TransactionCreat
     if is_negative_new: new_account.current_balance -= updated_tx.amount
     else: new_account.current_balance += updated_tx.amount
 
-    # Atualizar Objeto (Com Limpeza de Campos)
+    # Atualizar Objeto
     tx_data = updated_tx.model_dump() if hasattr(updated_tx, 'model_dump') else updated_tx.model_dump()
     
     # LIMPEZA
+    tx_data.pop('symbol', None)
     tx_data.pop('quantity', None)
     tx_data.pop('price_per_unit', None)
     tx_data.pop('asset_id', None)
+    
     if 'sub_category_id' in tx_data:
         tx_data['subcategory_id'] = tx_data.pop('sub_category_id')
 

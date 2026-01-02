@@ -1,32 +1,39 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from typing import List
 
+# Importações ajustadas aos teus modelos
 from app.models.transaction import Category, SubCategory
 from app.models.user import User
 from app.schemas import schemas
 from app.database.database import get_db
-from app.auth import get_current_user
+from app.utils.auth import get_current_user
 
-router = APIRouter(tags=["categories"])
+# --- CORREÇÃO: Adicionado prefixo aqui ---
+router = APIRouter(prefix="/categories", tags=["categories"])
 
-@router.get("/categories", response_model=List[schemas.CategoryResponse])
+# Agora usamos "/" que o FastAPI resolve automaticamente para "/categories" e "/categories/"
+@router.get("/", response_model=List[schemas.CategoryResponse])
 def read_categories(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Categorias do User + Globais
     return db.query(Category).options(joinedload(Category.subcategories)).filter(
         (Category.user_id == current_user.id) | (Category.user_id == None)
     ).all()
 
-# --- MOVIDO DO SETUP.PY ---
-@router.post("/categories/", response_model=schemas.CategoryResponse)
+@router.post("/", response_model=schemas.CategoryResponse, status_code=status.HTTP_201_CREATED)
 def create_category(category: schemas.CategoryCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Verificar duplicados
+    exists = db.query(Category).filter(Category.user_id == current_user.id, Category.name == category.name).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="Categoria já existe")
+
     db_cat = Category(**category.model_dump(), user_id=current_user.id)
     db.add(db_cat)
     db.commit()
     db.refresh(db_cat)
     return db_cat
-# --------------------------
 
+# Subcategorias (prefixo manual pois é diferente)
 @router.post("/subcategories", response_model=schemas.SubCategoryResponse)
 def create_subcategory(sub: schemas.SubCategoryCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     parent = db.query(Category).filter(Category.id == sub.category_id).first()

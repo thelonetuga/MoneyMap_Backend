@@ -1,85 +1,48 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import List
-
-# --- IMPORTS CORRIGIDOS ---
-from app.models import User , AssetPrice, Asset
-from app.schemas import schemas
 from app.database.database import get_db
-from app.auth import get_current_user
-# --------------------------
+from app.models.asset import Holding, Asset
+from app.models.account import Account
+from app.models.user import User
+from app.utils.auth import get_current_user
 
-router = APIRouter(tags=["portfolio"])
+router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
-@router.get("/portfolio", response_model=schemas.PortfolioResponse)
+@router.get("/")
 def get_portfolio(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Calcular Total de Dinheiro (Contas Bancárias)
-    total_cash = sum(acc.current_balance for acc in current_user.accounts)
+    # 1. Buscar todas as contas do user
+    accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
+    account_ids = [acc.id for acc in accounts]
+
+    total_cash = sum(acc.current_balance for acc in accounts)
     
-    # Dicionário de Agregação: "AAPL" -> { qtd: 10, cost: 1000, value: 1500 ... }
-    assets_map = {}
-
-    for acc in current_user.accounts:
-        for holding in acc.holdings:
-            # 1. Determinar o Preço Atual
-            # (Num sistema real, isto viria de uma cache ou API externa)
-            current_price = holding.avg_buy_price 
-            last_price = db.query(AssetPrice).filter(
-                AssetPrice.asset_id == holding.asset_id
-            ).order_by(AssetPrice.date.desc()).first()
-            
-            if last_price:
-                current_price = last_price.close_price
-
-            # 2. Calcular Valores desta parcela
-            market_value = holding.quantity * current_price
-            cost_basis = holding.quantity * holding.avg_buy_price
-            symbol = holding.asset.symbol
-
-            # 3. Agregar ao Mapa Global
-            if symbol not in assets_map:
-                assets_map[symbol] = {
-                    "quantity": 0.0,
-                    "total_value": 0.0,
-                    "total_cost": 0.0,
-                    "current_price": current_price
-                }
-            
-            assets_map[symbol]["quantity"] += holding.quantity
-            assets_map[symbol]["total_value"] += market_value
-            assets_map[symbol]["total_cost"] += cost_basis
-            # Atualizamos o preço para garantir que é o mais recente encontrado
-            assets_map[symbol]["current_price"] = current_price
-
-    # 4. Construir a Lista Final
+    # 2. Buscar todas as posições (Holdings) dessas contas
+    holdings = db.query(Holding).join(Asset).filter(Holding.account_id.in_(account_ids)).all()
+    
     positions = []
-    total_invested = 0.0
+    total_invested = 0
 
-    for symbol, data in assets_map.items():
-        total_invested += data["total_value"]
+    for h in holdings:
+        # Se a quantidade for 0 (já vendeu tudo), ignora
+        if h.quantity <= 0.0001: 
+            continue
+            
+        current_val = h.quantity * h.asset.current_price
+        invested_val = h.quantity * h.avg_buy_price
+        profit = current_val - invested_val
         
-        # Calcular Preço Médio Ponderado Global
-        avg_price = 0.0
-        if data["quantity"] > 0:
-            avg_price = data["total_cost"] / data["quantity"]
-
         positions.append({
-            "symbol": symbol,
-            "quantity": data["quantity"],
-            "avg_buy_price": avg_price,
-            "current_price": data["current_price"],
-            "total_value": data["total_value"],
-            "profit_loss": data["total_value"] - data["total_cost"]
+            "symbol": h.asset.symbol,
+            "quantity": h.quantity,
+            "current_price": h.asset.current_price,
+            "total_value": current_val,
+            "profit_loss": profit
         })
+        total_invested += current_val
 
     return {
-        "user_id": current_user.id,
-        "total_net_worth": total_cash + total_invested,
+        "total_net_worth": total_cash + total_invested, # Atenção: Depende se o teu saldo já desconta o investimento
         "total_cash": total_cash,
         "total_invested": total_invested,
         "positions": positions
     }
-
-@router.get("/assets", response_model=List[schemas.AssetResponse])
-def read_assets(db: Session = Depends(get_db)):
-    return db.query(Asset).all()

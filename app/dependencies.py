@@ -1,7 +1,7 @@
 # app/dependencies.py
 from fastapi import Depends, HTTPException, status
 from typing import List
-from app.auth import get_current_user
+from app.utils.auth import get_current_user
 from app.models import User
 
 
