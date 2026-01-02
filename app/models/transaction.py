@@ -16,6 +16,8 @@ class Category(Base):
     
     user = relationship("User", back_populates="categories")
     subcategories = relationship("SubCategory", back_populates="category", cascade="all, delete-orphan")
+    # NOVA RELAÇÃO DIRETA
+    transactions = relationship("Transaction", back_populates="category")
 
 class SubCategory(Base):
     __tablename__ = "subcategories"
@@ -24,8 +26,6 @@ class SubCategory(Base):
     name = Column(String)
 
     category = relationship("Category", back_populates="subcategories")
-    
-    # --- NOVO: Relação inversa para sabermos as transações desta subcategoria ---
     transactions = relationship("Transaction", back_populates="subcategory") 
 
 class Transaction(Base):
@@ -38,10 +38,15 @@ class Transaction(Base):
     
     account_id = Column(Integer, ForeignKey("accounts.id"))
     transaction_type_id = Column(Integer, ForeignKey("transaction_types.id"))
+    
+    # --- ALTERAÇÃO PRINCIPAL ---
+    # Adicionamos category_id explicitamente
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     subcategory_id = Column(Integer, ForeignKey("subcategories.id"), nullable=True)
 
     account = relationship("Account", back_populates="transactions")
     transaction_type = relationship("TransactionType")
     
-    # --- ATUALIZADO: Adicionado back_populates ---
+    # Relações para as categorias
+    category = relationship("Category", back_populates="transactions")
     subcategory = relationship("SubCategory", back_populates="transactions")

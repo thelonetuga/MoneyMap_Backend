@@ -99,7 +99,6 @@ class AssetResponse(AssetBase):
 
 class AccountBase(BaseModel):
     name: str
-    currency_code: str = "EUR"
     current_balance: float = 0.0
 
 class AccountCreate(AccountBase):
@@ -142,7 +141,8 @@ class TransactionCreate(TransactionBase):
     account_id: int
     transaction_type_id: int
     
-    # Opcionais
+    # ALTERADO: Agora aceitamos category_id
+    category_id: Optional[int] = None
     sub_category_id: Optional[int] = None
     asset_id: Optional[int] = None
 
@@ -151,16 +151,19 @@ class TransactionResponse(TransactionBase):
     account_id: int
     
     transaction_type_id: int
+    # ALTERADO: Incluímos o category_id na resposta plana
+    category_id: Optional[int] = None
     sub_category_id: Optional[int] = None
     asset_id: Optional[int] = None
 
-    # Objetos Aninhados (Mantêm-se, são ótimos para a listagem)
+    # Objetos Aninhados
     transaction_type: TransactionTypeResponse
+    # ALTERADO: Incluímos o objeto category completo
+    category: Optional[CategoryResponse] = None
     sub_category: Optional[SubCategoryResponse] = None
     asset: Optional[AssetResponse] = None
     
     model_config = ConfigDict(from_attributes=True)
-
 
 # --- 8. RELATÓRIOS (Não são tabelas, são cálculos) ---
 

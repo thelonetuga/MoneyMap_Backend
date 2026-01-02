@@ -62,6 +62,7 @@ def read_transactions(
     # 6. Ordenação, Eager Loading e Paginação
     transactions = query.options(
         joinedload(Transaction.transaction_type),
+        joinedload(Transaction.category),       # <--- NOVO
         joinedload(Transaction.subcategory)
     ).order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
 
