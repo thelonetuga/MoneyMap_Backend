@@ -21,7 +21,10 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     # Define role default como 'basic' se não for passado
     role = user.role if hasattr(user, 'role') and user.role else "basic"
     
-    new_user = User(email=user.email, hashed_password=hashed_password, role=role)
+    # --- CORREÇÃO AQUI ---
+    # Mudámos de 'hashed_password=' para 'password_hash='
+    new_user = User(email=user.email, password_hash=hashed_password, role=role)
+    
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
