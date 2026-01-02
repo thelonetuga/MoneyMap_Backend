@@ -3,18 +3,14 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from datetime import date
 
-# --- IMPORTS CORRIGIDOS (Absolutos) ---
 from app.database.database import get_db
-from app.models import Transaction, Account, User , TransactionType,Holding,Account
-
+from app.models import Transaction, Account, User, TransactionType, Holding, Category, SubCategory
 from app.schemas import schemas
 from app.dependencies import get_current_user
-# --------------------------------------
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 # --- LISTAR ---
-# --- LISTAR (COM PAGINAÇÃO E FILTROS) ---
 @router.get("/", response_model=List[schemas.TransactionResponse])
 def read_transactions(
     skip: int = 0,
@@ -27,42 +23,32 @@ def read_transactions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Base Query: Começamos por filtrar apenas transações das contas do utilizador
-    # (Para segurança, confirmamos sempre quais as contas que pertencem ao user)
     user_account_ids = [acc.id for acc in current_user.accounts]
     
     query = db.query(Transaction).filter(
         Transaction.account_id.in_(user_account_ids)
     )
 
-    # 2. Filtro de Conta Específica (Se o user selecionou uma conta no dropdown)
     if account_id:
         if account_id not in user_account_ids:
-            # Se tentar filtrar por uma conta que não é dele, devolvemos lista vazia ou erro
             return [] 
         query = query.filter(Transaction.account_id == account_id)
 
-    # 3. Filtros de Data
     if start_date:
         query = query.filter(Transaction.date >= start_date)
     if end_date:
         query = query.filter(Transaction.date <= end_date)
 
-    # 4. Filtro por Tipo (Ex: Só Despesas)
     if transaction_type_id:
         query = query.filter(Transaction.transaction_type_id == transaction_type_id)
 
-    # 5. Pesquisa de Texto (Case Insensitive no PostgreSQL com ilike, no SQLite fazemos like)
     if search:
-        # Nota: O 'ilike' é específico do Postgres. Se usares SQLite nos testes, usa 'like'.
-        # Para compatibilidade universal simples:
         search_fmt = f"%{search}%"
         query = query.filter(Transaction.description.like(search_fmt))
 
-    # 6. Ordenação, Eager Loading e Paginação
     transactions = query.options(
         joinedload(Transaction.transaction_type),
-        joinedload(Transaction.category),       # <--- NOVO
+        joinedload(Transaction.category),
         joinedload(Transaction.subcategory)
     ).order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
 
@@ -78,13 +64,13 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
     tx_type = db.query(TransactionType).filter(TransactionType.id == tx.transaction_type_id).first()
     if not tx_type: raise HTTPException(status_code=404, detail="Tipo inválido")
 
-    # Saldo
+    # 1. Atualizar Saldo da Conta
     negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
     is_negative = any(word in tx_type.name for word in negative_keywords)
     if is_negative: account.current_balance -= tx.amount
     else: account.current_balance += tx.amount
     
-    # Investimentos
+    # 2. Lógica de Investimentos (Holdings)
     if tx.asset_id and tx.quantity:
         holding = db.query(Holding).filter(Holding.account_id == account.id, Holding.asset_id == tx.asset_id).first()
         if not holding:
@@ -95,15 +81,24 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
             curr_val = holding.quantity * holding.avg_buy_price
             new_val = tx.quantity * (tx.price_per_unit if tx.price_per_unit else (tx.amount/tx.quantity))
             holding.quantity += tx.quantity
-            # Evitar divisão por zero
             if holding.quantity > 0:
                 holding.avg_buy_price = (curr_val + new_val) / holding.quantity
         elif "Venda" in tx_type.name or "Sell" in tx_type.name:
             holding.quantity -= tx.quantity
             if holding.quantity < 0: holding.quantity = 0
 
-    # Compatibilidade Pydantic v2
-    tx_data = tx.model_dump() if hasattr(tx, 'model_dump') else tx.model_dump() 
+    # 3. Preparar dados para a DB (CORREÇÃO DO ERRO TYPEERROR)
+    tx_data = tx.model_dump() if hasattr(tx, 'model_dump') else tx.model_dump()
+    
+    # REMOVER campos que não existem na tabela 'transactions'
+    tx_data.pop('quantity', None)
+    tx_data.pop('price_per_unit', None)
+    tx_data.pop('asset_id', None) # Removemos asset_id pois não existe no Model Transaction atual
+
+    # CORRIGIR mapeamento de nomes (Schema -> Model)
+    if 'sub_category_id' in tx_data:
+        tx_data['subcategory_id'] = tx_data.pop('sub_category_id')
+
     db_tx = Transaction(**tx_data)
     
     db.add(db_tx)
@@ -123,7 +118,6 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db), curre
     
     # Reverter Saldo
     negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
-    # Carregar tipo se necessário
     if not tx.transaction_type:
          tx.transaction_type = db.query(TransactionType).filter(TransactionType.id == tx.transaction_type_id).first()
 
@@ -131,14 +125,9 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db), curre
     if is_negative_originally: account.current_balance += tx.amount
     else: account.current_balance -= tx.amount
 
-    # Reverter Investimento (Simplificado)
-    if tx.asset_id and tx.quantity:
-        holding = db.query(Holding).filter(Holding.account_id == account.id, Holding.asset_id == tx.asset_id).first()
-        if holding:
-            if "Compra" in tx.transaction_type.name: holding.quantity -= tx.quantity
-            elif "Venda" in tx.transaction_type.name: holding.quantity += tx.quantity
-            if holding.quantity < 0: holding.quantity = 0
-
+    # Nota: Reverter Holdings seria complexo sem saber a 'quantity' original (que não guardámos na transação).
+    # Para MVP, ignoramos reversão de holding ao apagar, ou assumimos zero.
+    
     db.delete(tx)
     db.add(account)
     db.commit()
@@ -147,47 +136,45 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db), curre
 # --- EDITAR ---
 @router.put("/{transaction_id}", response_model=schemas.TransactionResponse)
 def update_transaction(transaction_id: int, updated_tx: schemas.TransactionCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # 1. Buscar transação antiga
     db_tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not db_tx: raise HTTPException(status_code=404, detail="Transação não encontrada")
 
-    # 2. Validar permissão na conta ANTIGA
     old_account = db.query(Account).filter(Account.id == db_tx.account_id).first()
     if not old_account or old_account.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Sem permissão na conta original.")
         
-    # 3. Validar permissão na conta NOVA
     new_account = db.query(Account).filter(Account.id == updated_tx.account_id).first()
     if not new_account or new_account.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Sem permissão na conta de destino.")
 
-    # 4. REVERTER O EFEITO DA ANTIGA
+    # Reverter Saldo Antigo
     negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
-    
     if not db_tx.transaction_type:
         db_tx.transaction_type = db.query(TransactionType).filter(TransactionType.id == db_tx.transaction_type_id).first()
-
     was_negative = any(word in db_tx.transaction_type.name for word in negative_keywords)
-    
     if was_negative: old_account.current_balance += db_tx.amount
     else: old_account.current_balance -= db_tx.amount
 
-    # (Lógica de Holdings omitida para brevidade, mas seria semelhante ao delete)
-
-    # 5. ATUALIZAR DADOS DO OBJETO
-    tx_data = updated_tx.model_dump() if hasattr(updated_tx, 'model_dump') else updated_tx.model_dump() 
-    for key, value in tx_data.items():
-        setattr(db_tx, key, value)
-    
-    # 6. APLICAR O EFEITO DA NOVA
+    # Aplicar Saldo Novo
     new_type = db.query(TransactionType).filter(TransactionType.id == updated_tx.transaction_type_id).first()
     if not new_type: raise HTTPException(status_code=404, detail="Novo tipo inválido")
-
     is_negative_new = any(word in new_type.name for word in negative_keywords)
-    
     if is_negative_new: new_account.current_balance -= updated_tx.amount
     else: new_account.current_balance += updated_tx.amount
 
+    # Atualizar Objeto (Com Limpeza de Campos)
+    tx_data = updated_tx.model_dump() if hasattr(updated_tx, 'model_dump') else updated_tx.model_dump()
+    
+    # LIMPEZA
+    tx_data.pop('quantity', None)
+    tx_data.pop('price_per_unit', None)
+    tx_data.pop('asset_id', None)
+    if 'sub_category_id' in tx_data:
+        tx_data['subcategory_id'] = tx_data.pop('sub_category_id')
+
+    for key, value in tx_data.items():
+        setattr(db_tx, key, value)
+    
     db.add(old_account)
     if new_account.id != old_account.id: db.add(new_account)
     db.add(db_tx)
