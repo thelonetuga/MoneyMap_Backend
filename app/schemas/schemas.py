@@ -3,6 +3,10 @@ from datetime import date, datetime
 from typing import Optional, List
 
 # --- 1. SCHEMAS AUXILIARES (Lookups) ---
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
 
 class AccountTypeBase(BaseModel):
     name: str
