@@ -4,6 +4,7 @@ from sqlalchemy import func
 from datetime import datetime, timedelta, date
 from typing import List
 import pandas as pd
+from dateutil.relativedelta import relativedelta # Recomendado para cálculos de meses precisos
 
 from app.database.database import get_db
 from app.utils.auth import get_current_user
@@ -88,18 +89,19 @@ def get_history(db: Session = Depends(get_db), current_user: User = Depends(get_
 @router.get("/evolution", response_model=List[schemas.EvolutionPoint])
 def get_evolution(
     period: str = Query("year", regex="^(year|quarter|month)$"),
+    time_range: str = Query("all", regex="^(all|1M|6M|1Y|YTD)$", description="Janela de tempo: 1M, 6M, 1Y, YTD ou all"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Retorna a evolução macro do património, despesas e receitas.
-    Garante que o último ponto reflete o estado ATUAL (Live) das contas.
+    Retorna a evolução macro do património.
+    - period: Granularidade (Agrupar por Ano, Trimestre, Mês)
+    - time_range: Janela de tempo (Último mês, 6 meses, 1 ano, Tudo)
     """
     # Identificar contas e seus tipos
     all_accounts = current_user.accounts
     user_account_ids = [acc.id for acc in all_accounts]
     
-    # Identificar IDs de contas líquidas (Tipo 1=Ordem, 3=Poupança)
     liquid_account_ids = [
         acc.id for acc in all_accounts 
         if acc.account_type_id in [1, 3]
@@ -108,7 +110,7 @@ def get_evolution(
     if not user_account_ids:
         return []
 
-    # 1. Buscar TODAS as transações
+    # 1. Buscar TODAS as transações (Necessário para calcular o Net Worth acumulado corretamente desde o início)
     transactions = db.query(Transaction).filter(
         Transaction.account_id.in_(user_account_ids)
     ).order_by(Transaction.date.asc()).all()
@@ -142,7 +144,7 @@ def get_evolution(
         grouped['net_change'] = grouped['amount']
         grouped['cumulative_net_worth'] = grouped['net_change'].cumsum()
         
-        # Ajuste de Offset Global (para alinhar o histórico com o presente)
+        # Ajuste de Offset Global
         current_total_balance = sum(acc.current_balance for acc in all_accounts)
         calculated_final_total = grouped['cumulative_net_worth'].iloc[-1] if not grouped.empty else 0
         offset_total = current_total_balance - calculated_final_total
@@ -157,6 +159,26 @@ def get_evolution(
         calculated_final_liquid = cumulative_liquid.iloc[-1] if not cumulative_liquid.empty else 0
         offset_liquid = current_liquid_balance - calculated_final_liquid
         cumulative_liquid += offset_liquid
+
+        # --- FILTRAR POR TIME RANGE (NOVO) ---
+        if time_range != "all":
+            cutoff_date = datetime.now()
+            if time_range == "1M":
+                cutoff_date -= relativedelta(months=1)
+            elif time_range == "6M":
+                cutoff_date -= relativedelta(months=6)
+            elif time_range == "1Y":
+                cutoff_date -= relativedelta(years=1)
+            elif time_range == "YTD":
+                cutoff_date = datetime(cutoff_date.year, 1, 1)
+            
+            # Converter cutoff para Timestamp do pandas para comparação
+            cutoff_ts = pd.Timestamp(cutoff_date)
+            
+            # Filtrar o DataFrame agrupado
+            grouped = grouped[grouped.index >= cutoff_ts]
+            # Filtrar também a série de liquidez (usando o mesmo índice)
+            cumulative_liquid = cumulative_liquid[cumulative_liquid.index.isin(grouped.index)]
 
         # Formatar lista inicial
         for date_idx, row in grouped.iterrows():
@@ -173,8 +195,9 @@ def get_evolution(
             savings_rate = 0.0
             if income > 0:
                 savings_rate = ((income - expenses) / income) * 100
-                
-            liquid_val = cumulative_liquid.loc[date_idx]
+            
+            # Proteção caso o filtro de datas tenha desalinhado os índices (raro, mas seguro)
+            liquid_val = cumulative_liquid.loc[date_idx] if date_idx in cumulative_liquid.index else 0
                 
             result.append({
                 "period": period_label,
@@ -203,19 +226,20 @@ def get_evolution(
         
     # 3. Verificar e Atualizar/Adicionar
     if result and result[-1]["period"] == current_label:
-        # Cenário A: O período atual já existe na lista (houve transações).
-        # Forçamos os valores de Stock (Net Worth/Liquidez) para bater certo com o Live.
-        # Mantemos os valores de Flow (Income/Expenses) que vieram do histórico.
+        # Cenário A: O período atual já existe na lista
         result[-1]["net_worth"] = round(live_net_worth, 2)
         result[-1]["liquid_cash"] = round(live_liquid_cash, 2)
     else:
-        # Cenário B: O período atual NÃO existe (não houve transações este mês/ano ainda).
-        # Adicionamos um ponto novo representando o "Agora".
+        # Cenário B: O período atual NÃO existe (ou foi filtrado, ou não há transações)
+        # Se o filtro for "all" ou se a data atual estiver dentro do range, adicionamos.
+        # Simplificação: Adicionamos sempre o ponto "Live" se a lista estiver vazia OU se for o futuro imediato.
+        # Mas se o user pediu "Last Month" e estamos no dia 1 do mês seguinte, faz sentido mostrar.
+        
         result.append({
             "period": current_label,
             "net_worth": round(live_net_worth, 2),
             "liquid_cash": round(live_liquid_cash, 2),
-            "expenses": 0.0, # Sem transações, sem despesas registadas neste período
+            "expenses": 0.0,
             "income": 0.0,
             "savings_rate": 0.0
         })

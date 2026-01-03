@@ -174,6 +174,14 @@ class TransactionResponse(TransactionBase):
     
     model_config = ConfigDict(from_attributes=True)
 
+# --- NOVO: Resposta Paginada ---
+class TransactionPaginatedResponse(BaseModel):
+    items: List[TransactionResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
 # --- 8. RELATÓRIOS (Não são tabelas, são cálculos) ---
 
 class PortfolioPosition(BaseModel):

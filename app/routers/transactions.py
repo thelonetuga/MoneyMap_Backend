@@ -1,39 +1,51 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import desc, asc
 from typing import List, Optional
 from datetime import date
+import math
 
 from app.database.database import get_db
-# USAMOS A TUA IMPORTAÇÃO (Assume que app/models expõe estas classes)
 from app.models import Transaction, Account, User, TransactionType, Holding, Category, SubCategory, Asset
 from app.schemas import schemas
 from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
-# --- LISTAR ---
-@router.get("/", response_model=List[schemas.TransactionResponse])
+# --- LISTAR (Paginado e Filtrado) ---
+@router.get("/", response_model=schemas.TransactionPaginatedResponse)
 def read_transactions(
-    skip: int = 0,
-    limit: int = 50,
+    page: int = Query(1, ge=1, description="Número da página"),
+    size: int = Query(50, ge=1, le=100, description="Itens por página"),
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     search: Optional[str] = None,
     account_id: Optional[int] = None,
+    category_id: Optional[int] = None, # <--- NOVO
     transaction_type_id: Optional[int] = None,
+    sort_by: str = Query("date_desc", regex="^(date_desc|date_asc|amount_desc|amount_asc)$"), # <--- NOVO
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Calcular skip baseado na página
+    skip = (page - 1) * size
+    
     user_account_ids = [acc.id for acc in current_user.accounts]
     
+    # Base Query
     query = db.query(Transaction).filter(
         Transaction.account_id.in_(user_account_ids)
     )
 
+    # --- FILTROS ---
     if account_id:
         if account_id not in user_account_ids:
-            return [] 
+            # Se tentar filtrar por conta que não é dele, retorna vazio (segurança)
+            return {"items": [], "total": 0, "page": page, "size": size, "pages": 0}
         query = query.filter(Transaction.account_id == account_id)
+
+    if category_id:
+        query = query.filter(Transaction.category_id == category_id)
 
     if start_date:
         query = query.filter(Transaction.date >= start_date)
@@ -45,18 +57,38 @@ def read_transactions(
 
     if search:
         search_fmt = f"%{search}%"
-        query = query.filter(Transaction.description.like(search_fmt))
+        query = query.filter(Transaction.description.ilike(search_fmt)) # ilike é case-insensitive no Postgres
 
-    # Nota: Verifica se no teu model o nome da relação é 'sub_category' (com underscore) ou 'subcategory'.
-    # Baseado no upload original era 'sub_category', mas ajusta se tiveres mudado.
+    # --- TOTAL COUNT (Antes da paginação) ---
+    total = query.count()
+    pages = math.ceil(total / size) if size > 0 else 0
+
+    # --- ORDENAÇÃO ---
+    if sort_by == "date_asc":
+        query = query.order_by(Transaction.date.asc(), Transaction.id.asc())
+    elif sort_by == "amount_desc":
+        query = query.order_by(Transaction.amount.desc())
+    elif sort_by == "amount_asc":
+        query = query.order_by(Transaction.amount.asc())
+    else: # Default: date_desc
+        query = query.order_by(Transaction.date.desc(), Transaction.id.desc())
+
+    # --- PAGINAÇÃO E FETCH ---
     transactions = query.options(
         joinedload(Transaction.transaction_type),
         joinedload(Transaction.subcategory), 
         joinedload(Transaction.asset),
-        joinedload(Transaction.account)
-    ).order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
+        joinedload(Transaction.account),
+        joinedload(Transaction.category) # Carregar categoria também
+    ).offset(skip).limit(size).all()
 
-    return transactions
+    return {
+        "items": transactions,
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": pages
+    }
 
 # --- CRIAR ---
 @router.post("/", response_model=schemas.TransactionResponse, status_code=status.HTTP_201_CREATED)
@@ -85,9 +117,6 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
         # Verificar ou Criar Asset
         asset = db.query(Asset).filter(Asset.symbol == symbol_upper).first()
         if not asset:
-            # --- CORREÇÃO DO ERRO ---
-            # Removemos 'current_price' porque não existe no teu model Asset.
-            # Adicionamos 'asset_type' com valor default "Stock" (ou outro genérico).
             asset = Asset(symbol=symbol_upper, name=symbol_upper, asset_type="Stock")
             db.add(asset)
             db.commit()
@@ -143,7 +172,6 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
     else:
          tx_data.pop('asset_id', None)
 
-    # Corrigir nome do campo subcategoria: o schema usa 'sub_category_id', o modelo usa 'subcategory_id'
     if 'sub_category_id' in tx_data:
         tx_data['subcategory_id'] = tx_data.pop('sub_category_id')
 
@@ -152,7 +180,6 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
     
     db.add(db_tx)
     db.add(account)
-    # Holding já foi adicionada ao session acima se criada/editada
     
     db.commit()
     db.refresh(db_tx)
@@ -224,7 +251,6 @@ def update_transaction(transaction_id: int, updated_tx: schemas.TransactionCreat
     tx_data = updated_tx.model_dump() if hasattr(updated_tx, 'model_dump') else updated_tx.dict()
     tx_data['amount'] = final_new_amount
     
-    # Limpeza para evitar erros de campos inexistentes ou lógica complexa de holdings no update
     tx_data.pop('symbol', None)
     tx_data.pop('quantity', None)
     tx_data.pop('price_per_unit', None)

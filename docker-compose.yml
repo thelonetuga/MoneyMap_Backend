@@ -26,11 +26,14 @@ services:
     env_file:
       - .env
     environment:
-      # Garante que a API se conecta ao container 'db' e não ao localhost
       - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-segredo}@db:5432/${POSTGRES_DB:-moneymap_db}
     depends_on:
       db:
         condition: service_healthy
+    # --- CORREÇÃO DE REDE ---
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
 
 volumes:
   postgres_data:
