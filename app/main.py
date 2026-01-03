@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Importa os teus routers
-from app.routers import users, transactions, accounts, categories, analytics, portfolio, imports, auth
+from app.routers import users, transactions, accounts, categories, analytics, portfolio, imports, auth, setup
 from app.database.database import engine, Base
 
 Base.metadata.create_all(bind=engine)
@@ -34,6 +34,7 @@ app.include_router(categories.router)
 app.include_router(analytics.router)
 app.include_router(portfolio.router)
 app.include_router(imports.router)
+app.include_router(setup.router)
 
 @app.get("/")
 def read_root():

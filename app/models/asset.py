@@ -11,6 +11,7 @@ class Asset(Base):
 
     prices = relationship("AssetPrice", back_populates="asset")
     holdings = relationship("Holding", back_populates="asset")
+    transactions = relationship("Transaction", back_populates="asset")
 
 class AssetPrice(Base):
     __tablename__ = "asset_prices"

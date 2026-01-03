@@ -145,7 +145,7 @@ class TransactionBase(BaseModel):
     # Campos de Investimento (Opcionais)
     quantity: Optional[float] = None
     price_per_unit: Optional[float] = None
-    symbol: Optional[str] = None  # <--- ESTE CAMPO FALTAVA! 🚨
+    symbol: Optional[str] = None
 
 class TransactionCreate(TransactionBase):
     account_id: int

@@ -43,10 +43,15 @@ class Transaction(Base):
     # Adicionamos category_id explicitamente
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     subcategory_id = Column(Integer, ForeignKey("subcategories.id"), nullable=True)
+    
+    # --- CAMPOS DE INVESTIMENTO ---
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)
+    quantity = Column(Float, nullable=True) # Quantidade de ações/crypto
 
     account = relationship("Account", back_populates="transactions")
     transaction_type = relationship("TransactionType")
     
-    # Relações para as categorias
+    # Relações para as categorias e ativos
     category = relationship("Category", back_populates="transactions")
     subcategory = relationship("SubCategory", back_populates="transactions")
+    asset = relationship("Asset", back_populates="transactions")

@@ -4,7 +4,7 @@ from typing import List, Optional
 from datetime import date
 
 from app.database.database import get_db
-# ADICIONADO: Importar Asset para podermos criar/buscar ativos
+# USAMOS A TUA IMPORTAÇÃO (Assume que app/models expõe estas classes)
 from app.models import Transaction, Account, User, TransactionType, Holding, Category, SubCategory, Asset
 from app.schemas import schemas
 from app.dependencies import get_current_user
@@ -47,16 +47,18 @@ def read_transactions(
         search_fmt = f"%{search}%"
         query = query.filter(Transaction.description.like(search_fmt))
 
+    # Nota: Verifica se no teu model o nome da relação é 'sub_category' (com underscore) ou 'subcategory'.
+    # Baseado no upload original era 'sub_category', mas ajusta se tiveres mudado.
     transactions = query.options(
         joinedload(Transaction.transaction_type),
-        joinedload(Transaction.category),
-        joinedload(Transaction.subcategory), # Já tinhas este
-        joinedload(Transaction.account)      # <--- ADICIONA ESTA LINHA (A CORREÇÃO) ✅
+        joinedload(Transaction.subcategory), 
+        joinedload(Transaction.asset),
+        joinedload(Transaction.account)
     ).order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
 
     return transactions
 
-# --- CRIAR (LÓGICA CORRIGIDA) ---
+# --- CRIAR ---
 @router.post("/", response_model=schemas.TransactionResponse, status_code=status.HTTP_201_CREATED)
 def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # 1. Validar Conta
@@ -67,37 +69,53 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
     tx_type = db.query(TransactionType).filter(TransactionType.id == tx.transaction_type_id).first()
     if not tx_type: raise HTTPException(status_code=404, detail="Tipo inválido")
 
-    # 2. Lógica de Investimentos (A MÁGICA ACONTECE AQUI) 🎩✨
-    # Verificamos se veio Símbolo e Quantidade do frontend
+    # 2. DEFINIR O SINAL DO VALOR
+    negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
+    is_negative_action = any(word in tx_type.name for word in negative_keywords)
+    
+    # Normalizar o valor (Despesa/Investimento = Negativo)
+    final_amount = -abs(tx.amount) if is_negative_action else abs(tx.amount)
+
+    asset_id_to_save = None
+
+    # 3. Lógica de Investimentos
     if tx.symbol and tx.quantity:
         symbol_upper = tx.symbol.upper()
         
-        # Procura o ativo pelo símbolo
+        # Verificar ou Criar Asset
         asset = db.query(Asset).filter(Asset.symbol == symbol_upper).first()
-        
-        # Se não existir, CRIA O ATIVO
         if not asset:
-            initial_price = tx.amount / tx.quantity if tx.quantity > 0 else 0
-            asset = Asset(symbol=symbol_upper, name=symbol_upper, current_price=initial_price)
+            # --- CORREÇÃO DO ERRO ---
+            # Removemos 'current_price' porque não existe no teu model Asset.
+            # Adicionamos 'asset_type' com valor default "Stock" (ou outro genérico).
+            asset = Asset(symbol=symbol_upper, name=symbol_upper, asset_type="Stock")
             db.add(asset)
             db.commit()
             db.refresh(asset)
         
-        # Atualizar Carteira (Holdings)
+        asset_id_to_save = asset.id
+
+        # Gerir Holding (Posição na Carteira)
         holding = db.query(Holding).filter(Holding.account_id == account.id, Holding.asset_id == asset.id).first()
         if not holding:
             holding = Holding(account_id=account.id, asset_id=asset.id, quantity=0, avg_buy_price=0)
             db.add(holding)
         
-        # Lógica de Compra vs Venda
-        negative_keywords = ["Despesa", "Saída", "Compra", "Buy"]
-        is_buy = any(k in tx_type.name for k in negative_keywords)
+        # Compra vs Venda
+        is_buy_asset = any(k in tx_type.name for k in ["Compra", "Buy"])
         
-        if is_buy:
-            # Recalcular Preço Médio (Média Ponderada)
+        if is_buy_asset:
+            # Cálculo de Preço Médio
             current_total_val = holding.quantity * holding.avg_buy_price
-            new_total_val = current_total_val + tx.amount
+            
+            # Preço da nova compra
+            p_unit = tx.price_per_unit if (tx.price_per_unit and tx.price_per_unit > 0) else (abs(final_amount) / tx.quantity if tx.quantity > 0 else 0)
+            
+            cost_of_this_buy = tx.quantity * p_unit
+            new_total_val = current_total_val + cost_of_this_buy
+            
             holding.quantity += tx.quantity
+            
             if holding.quantity > 0:
                 holding.avg_buy_price = new_total_val / holding.quantity
         else:
@@ -105,34 +123,36 @@ def create_transaction(tx: schemas.TransactionCreate, db: Session = Depends(get_
             holding.quantity -= tx.quantity
             if holding.quantity < 0: holding.quantity = 0
 
-    # 3. Atualizar Saldo da Conta
-    negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
-    is_negative = any(word in tx_type.name for word in negative_keywords)
+    # 4. Atualizar Saldo da Conta
+    account.current_balance += final_amount
     
-    if is_negative: account.current_balance -= tx.amount
-    else: account.current_balance += tx.amount
+    # 5. Criar Objeto da Transação
+    tx_data = tx.model_dump() if hasattr(tx, 'model_dump') else tx.dict()
     
-    # 4. Preparar dados para a DB
-    tx_data = tx.model_dump() if hasattr(tx, 'model_dump') else tx.model_dump()
-    
-    # LIMPEZA DE CAMPOS VIRTUAIS
-    # Removemos estes campos porque a tabela 'transactions' não tem colunas para eles
-    # (A informação do investimento ficou guardada na tabela 'holdings')
+    # Forçar o valor com sinal correto
+    tx_data['amount'] = final_amount
+
+    # Limpar campos que não pertencem à tabela Transactions
     tx_data.pop('symbol', None)
     tx_data.pop('quantity', None)
     tx_data.pop('price_per_unit', None)
-    tx_data.pop('asset_id', None) 
+    
+    # Ligar o Asset ID se existir
+    if asset_id_to_save:
+        tx_data['asset_id'] = asset_id_to_save
+    else:
+         tx_data.pop('asset_id', None)
 
+    # Corrigir nome do campo subcategoria: o schema usa 'sub_category_id', o modelo usa 'subcategory_id'
     if 'sub_category_id' in tx_data:
         tx_data['subcategory_id'] = tx_data.pop('sub_category_id')
 
+    # Criar e Salvar
     db_tx = Transaction(**tx_data)
     
     db.add(db_tx)
     db.add(account)
-    # Importante: só adicionamos holding se ela tiver sido criada/alterada
-    if 'holding' in locals(): 
-        db.add(holding)
+    # Holding já foi adicionada ao session acima se criada/editada
     
     db.commit()
     db.refresh(db_tx)
@@ -148,13 +168,23 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db), curre
     if not account or account.user_id != current_user.id: raise HTTPException(status_code=403, detail="Não permitido.")
     
     # Reverter Saldo
-    negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
-    if not tx.transaction_type:
-         tx.transaction_type = db.query(TransactionType).filter(TransactionType.id == tx.transaction_type_id).first()
+    account.current_balance -= tx.amount
 
-    is_negative_originally = any(word in tx.transaction_type.name for word in negative_keywords)
-    if is_negative_originally: account.current_balance += tx.amount
-    else: account.current_balance -= tx.amount
+    # Reverter Holding
+    if tx.asset_id and tx.quantity:
+        holding = db.query(Holding).filter(Holding.account_id == account.id, Holding.asset_id == tx.asset_id).first()
+        if holding:
+            if not tx.transaction_type:
+                 tx.transaction_type = db.query(TransactionType).filter(TransactionType.id == tx.transaction_type_id).first()
+            
+            is_buy = any(k in tx.transaction_type.name for k in ["Compra", "Buy"])
+            
+            if is_buy:
+                holding.quantity -= tx.quantity
+            else:
+                holding.quantity += tx.quantity
+            
+            if holding.quantity < 0: holding.quantity = 0
 
     db.delete(tx)
     db.add(account)
@@ -169,41 +199,43 @@ def update_transaction(transaction_id: int, updated_tx: schemas.TransactionCreat
 
     old_account = db.query(Account).filter(Account.id == db_tx.account_id).first()
     if not old_account or old_account.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Sem permissão na conta original.")
+        raise HTTPException(status_code=403, detail="Sem permissão.")
         
     new_account = db.query(Account).filter(Account.id == updated_tx.account_id).first()
     if not new_account or new_account.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Sem permissão na conta de destino.")
+        raise HTTPException(status_code=403, detail="Sem permissão no destino.")
 
-    # Reverter Saldo Antigo
-    negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
-    if not db_tx.transaction_type:
-        db_tx.transaction_type = db.query(TransactionType).filter(TransactionType.id == db_tx.transaction_type_id).first()
-    was_negative = any(word in db_tx.transaction_type.name for word in negative_keywords)
-    if was_negative: old_account.current_balance += db_tx.amount
-    else: old_account.current_balance -= db_tx.amount
+    # 1. Reverter Saldo Antigo
+    old_account.current_balance -= db_tx.amount
 
-    # Aplicar Saldo Novo
+    # 2. Calcular Novo Valor com Sinal
     new_type = db.query(TransactionType).filter(TransactionType.id == updated_tx.transaction_type_id).first()
-    if not new_type: raise HTTPException(status_code=404, detail="Novo tipo inválido")
-    is_negative_new = any(word in new_type.name for word in negative_keywords)
-    if is_negative_new: new_account.current_balance -= updated_tx.amount
-    else: new_account.current_balance += updated_tx.amount
-
-    # Atualizar Objeto
-    tx_data = updated_tx.model_dump() if hasattr(updated_tx, 'model_dump') else updated_tx.model_dump()
+    if not new_type: raise HTTPException(status_code=404, detail="Tipo inválido")
     
-    # LIMPEZA
+    negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
+    is_negative_new = any(word in new_type.name for word in negative_keywords)
+    
+    final_new_amount = -abs(updated_tx.amount) if is_negative_new else abs(updated_tx.amount)
+
+    # 3. Aplicar Novo Saldo
+    new_account.current_balance += final_new_amount
+
+    # 4. Atualizar Objeto Transaction
+    tx_data = updated_tx.model_dump() if hasattr(updated_tx, 'model_dump') else updated_tx.dict()
+    tx_data['amount'] = final_new_amount
+    
+    # Limpeza para evitar erros de campos inexistentes ou lógica complexa de holdings no update
     tx_data.pop('symbol', None)
     tx_data.pop('quantity', None)
     tx_data.pop('price_per_unit', None)
-    tx_data.pop('asset_id', None)
+    tx_data.pop('asset_id', None) 
     
     if 'sub_category_id' in tx_data:
         tx_data['subcategory_id'] = tx_data.pop('sub_category_id')
 
     for key, value in tx_data.items():
-        setattr(db_tx, key, value)
+        if hasattr(db_tx, key):
+            setattr(db_tx, key, value)
     
     db.add(old_account)
     if new_account.id != old_account.id: db.add(new_account)
