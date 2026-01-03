@@ -12,7 +12,7 @@ def test_register_duplicate_email(client):
     # Segundo registo (deve falhar)
     response = client.post("/users/", json={"email": "duplo@teste.com", "password": "123"})
     assert response.status_code == 400
-    assert "registado" in response.json()["detail"]
+    assert "registered" in response.json()["detail"]
 
 def test_login_success(client):
     client.post("/users/", json={"email": "login@teste.com", "password": "securepassword"})

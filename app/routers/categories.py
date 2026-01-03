@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 
 # Importações ajustadas aos teus modelos
-from app.models.transaction import Category, SubCategory
+from app.models.transaction import Category, SubCategory, Transaction
 from app.models.user import User
 from app.schemas import schemas
 from app.database.database import get_db
@@ -58,14 +58,21 @@ def delete_subcategory(
     if not sub:
         raise HTTPException(status_code=404, detail="Subcategoria não encontrada")
     
-    # 2. Verificar se pertence ao user (através da Categoria Pai)
-    # A subcategoria está ligada a uma Categoria, que está ligada a um User (ou é global)
+    # 2. Verificar permissão (User Dono)
     parent_category = db.query(Category).filter(Category.id == sub.category_id).first()
-    
     if parent_category.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Não tem permissão para apagar esta subcategoria.")
+        raise HTTPException(status_code=403, detail="Não tem permissão.")
 
-    # 3. Apagar
+    # 3. VERIFICAÇÃO DE SEGURANÇA (NOVO) 🚨
+    # Se houver alguma transação a usar esta subcategoria, bloqueia!
+    usage_check = db.query(Transaction).filter(Transaction.sub_category_id == subcategory_id).first()
+    if usage_check:
+        raise HTTPException(
+            status_code=400, 
+            detail="Não é possível apagar: esta subcategoria tem transações associadas."
+        )
+
+    # 4. Apagar
     db.delete(sub)
     db.commit()
     return None

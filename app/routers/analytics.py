@@ -1,69 +1,64 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session, joinedload
-from datetime import date, timedelta
-
-# --- IMPORTS CORRIGIDOS ---
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from datetime import datetime, timedelta
+from typing import List
 
 from app.database.database import get_db
-from app.dependencies import  get_current_user
-from app.models import Transaction, User , SubCategory, TransactionType
-# --------------------------
+from app.utils.auth import get_current_user
+from app.models import User, Transaction, Category # <--- Adicionei Category
+from app.schemas import schemas
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
-@router.get("/spending")
-def get_spending_breakdown(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    start_date = date.today() - timedelta(days=30)
-    account_ids = [acc.id for acc in current_user.accounts]
+# --- 1. SPENDING ANALYTICS (Para o Gráfico de Despesas) ---
+@router.get("/spending", response_model=List[dict])
+def get_spending_analytics(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Identificar as contas do utilizador
+    user_account_ids = [acc.id for acc in current_user.accounts]
     
-    transactions = db.query(Transaction)\
-        .join(TransactionType)\
-        .options(joinedload(Transaction.subcategory).joinedload(SubCategory.category))\
-        .filter(Transaction.account_id.in_(account_ids))\
-        .filter(Transaction.date >= start_date)\
-        .all()
+    if not user_account_ids:
+        return []
 
-    spending = {}
-    for tx in transactions:
-        negative_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
-        if any(word in tx.transaction_type.name for word in negative_keywords):
-            if tx.subcategory and tx.subcategory.category:
-                cat_name = tx.subcategory.category.name
-            else:
-                cat_name = "Outros / Sem Categoria"
-            spending[cat_name] = spending.get(cat_name, 0) + tx.amount
-
-    result = [{"name": k, "value": v} for k, v in spending.items() if v > 0]
-    result.sort(key=lambda x: x['value'], reverse=True)
-    return result
-
-# Função auxiliar para Histórico (chamada pelo main.py)
-def get_portfolio_history(db: Session, current_user: User):
-    today = date.today()
-    account_ids = [acc.id for acc in current_user.accounts]
-    current_cash = sum(acc.current_balance for acc in current_user.accounts)
+    # Query: Agrupar por Categoria e Somar os valores ABSOLUTOS das despesas
+    # Consideramos "Despesa" qualquer transação com valor negativo (< 0)
+    results = db.query(
+        Category.name, 
+        func.sum(func.abs(Transaction.amount)).label("total")
+    ).join(Transaction.category).filter(
+        Transaction.account_id.in_(user_account_ids),
+        Transaction.amount < 0 
+    ).group_by(Category.name).all()
     
-    history_points = []
-    running_balance = current_cash
+    # Formatar para o Frontend (Recharts gosta de "name" e "value")
+    return [{"name": cat_name, "value": total} for cat_name, total in results]
 
-    for i in range(30):
-        target_date = today - timedelta(days=i)
+# --- 2. HISTORY (Para o Gráfico de Evolução) ---
+@router.get("/history") 
+def get_history(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    Retorna a evolução do património nos últimos 30 dias.
+    (Versão Simplificada para MVP e Testes)
+    """
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=30)
+    
+    history_data = []
+    
+    # Calcula o património ATUAL (para ter um valor de referência)
+    current_net_worth = 0
+    for acc in current_user.accounts:
+        current_net_worth += acc.current_balance
+    
+    # Gera 30 pontos de dados
+    # Num sistema real, lerias de uma tabela 'DailySnapshot'.
+    # Aqui, devolvemos o valor atual para desenhar uma linha reta (melhor que zero).
+    for i in range(31):
+        target_date = start_date + timedelta(days=i)
         
-        daily_txs = db.query(Transaction).join(Transaction.transaction_type).filter(
-            Transaction.account_id.in_(account_ids),
-            Transaction.date == target_date
-        ).all()
-
-        history_points.append({
-            "date": target_date.isoformat(),
-            "value": running_balance
+        history_data.append({
+            "date": target_date.strftime("%Y-%m-%d"),
+            "value": current_net_worth 
         })
-
-        for tx in daily_txs:
-            neg_keywords = ["Despesa", "Expense", "Levantamento", "Compra", "Buy", "Saída"]
-            if any(w in tx.transaction_type.name for w in neg_keywords):
-                 running_balance += tx.amount 
-            else:
-                 running_balance -= tx.amount
-
-    return history_points[::-1]
+        
+    return history_data

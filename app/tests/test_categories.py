@@ -10,13 +10,15 @@ def test_create_and_delete_subcategory(client, auth_headers, db_session):
     
     # 2. Criar Subcategoria via API
     payload = {"name": "Sub Teste", "category_id": cat.id}
-    res = client.post("/subcategories", json=payload, headers=auth_headers)
+    res = client.post("/categories/subcategories", json=payload, headers=auth_headers)
     assert res.status_code == 200
     sub_id = res.json()["id"]
 
-    # 3. Apagar Subcategoria (sem transações)
-    del_res = client.delete(f"/subcategories/{sub_id}", headers=auth_headers)
-    assert del_res.status_code == 200
+   # 3. Apagar Subcategoria
+    del_res = client.delete(f"/categories/subcategories/{sub_id}", headers=auth_headers)
+    
+    # CORREÇÃO: O status correto para delete sem retorno é 204, não 200
+    assert del_res.status_code == 204
 
 def test_cannot_delete_category_with_transactions(client, auth_headers, db_session):
     # 1. Setup: Categoria -> Subcategoria -> Conta -> Transação
@@ -43,7 +45,7 @@ def test_cannot_delete_category_with_transactions(client, auth_headers, db_sessi
     client.post("/transactions/", json=tx_payload, headers=auth_headers)
     
     # 2. Tentar apagar a subcategoria
-    del_res = client.delete(f"/subcategories/{sub.id}", headers=auth_headers)
+    del_res = client.delete(f"/categories/subcategories/{sub.id}", headers=auth_headers)
     
     # 3. Deve falhar (Bad Request)
     assert del_res.status_code == 400
