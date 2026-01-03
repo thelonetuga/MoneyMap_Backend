@@ -1,46 +1,90 @@
-# MoneyMap - Backend & Infraestrutura 🗄️
+# MoneyMap - Backend API 🚀
 
-Este diretório contém a infraestrutura de backend do projeto **MoneyMap**, focada na persistência de dados utilizando PostgreSQL e Docker.
-
-## 📂 Estrutura
-
-*   `docker/`: Configurações de containerização e orquestração.
-    *   `docker-compose.yml`: Definição do serviço de base de dados PostgreSQL.
-    *   `.env`: Variáveis de ambiente (credenciais).
+Backend robusto para gestão financeira pessoal, construído com **FastAPI**, **PostgreSQL** e **Docker**.
 
 ## 🛠️ Tecnologias
 
+*   **Framework**: FastAPI (Python 3.11)
 *   **Base de Dados**: PostgreSQL 15
+*   **ORM**: SQLAlchemy
+*   **Migrações**: Alembic
 *   **Infraestrutura**: Docker & Docker Compose
+*   **Testes**: Pytest
 
-## 🚀 Como Iniciar a Infraestrutura
+## 🚀 Como Iniciar (Produção / Docker)
 
-Para arrancar com a base de dados localmente:
+A forma mais fácil de correr o projeto completo (API + Base de Dados):
 
-1.  **Navegue para a pasta docker:**
+1.  **Configurar Ambiente:**
     ```bash
-    cd docker
+    cp .env.example .env
+    # Edite o .env com as suas credenciais se necessário
     ```
 
-2.  **Configure as variáveis de ambiente:**
-    Crie um ficheiro `.env` nesta pasta (se ainda não existir) com o seguinte conteúdo:
-    ```env
-    POSTGRES_USER=admin
-    POSTGRES_PASSWORD=segredo
-    POSTGRES_DB=moneymap_db
-    ```
-
-3.  **Inicie o serviço:**
+2.  **Arrancar Serviços:**
     ```bash
-    docker-compose up -d
+    docker compose up -d --build
     ```
 
-## 🔌 Detalhes de Conexão
+A API ficará disponível em: `http://localhost:8000`
+Documentação Interativa (Swagger): `http://localhost:8000/docs`
 
-Uma vez iniciado, o PostgreSQL estará acessível em:
+## 💻 Desenvolvimento Local
 
-*   **Host**: `localhost`
-*   **Porta**: `5432`
-*   **Username**: `admin` (ou o definido no .env)
-*   **Password**: `segredo` (ou o definido no .env)
-*   **Database**: `moneymap_db`
+Se preferir correr o Python localmente:
+
+1.  **Instalar Dependências:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+2.  **Arrancar Base de Dados (via Docker):**
+    ```bash
+    docker compose up -d db
+    ```
+
+3.  **Aplicar Migrações:**
+    ```bash
+    alembic upgrade head
+    ```
+
+4.  **Popular com Dados de Teste (Seed):**
+    ```bash
+    python -m app.seed
+    ```
+
+5.  **Correr Servidor:**
+    ```bash
+    uvicorn app.main:app --reload
+    ```
+
+## 🧪 Testes
+
+Para garantir a estabilidade e segurança:
+
+```bash
+pytest
+```
+
+## 📂 Estrutura do Projeto
+
+*   `app/`: Código fonte da API.
+    *   `routers/`: Endpoints organizados por domínio (Auth, Accounts, Analytics...).
+    *   `models/`: Tabelas da Base de Dados.
+    *   `schemas/`: Validação de dados (Pydantic).
+*   `alembic/`: Scripts de migração de base de dados.
+*   `tests/`: Testes unitários e de integração.
+
+## 📊 Funcionalidades Principais
+
+*   **Autenticação JWT**: Registo e Login seguro.
+*   **Gestão de Contas**: Bancárias, Investimento e Crypto.
+*   **Transações**: Receitas e Despesas categorizadas.
+*   **Analytics**:
+    *   Gráficos de Despesas por Categoria.
+    *   Evolução Patrimonial (Net Worth vs Liquidez).
+    *   Sincronização em tempo real (Live Sync).
+*   **Portfolio**: Integração com dados de mercado para valorização de ativos.
+
+---
+Desenvolvido com ❤️ para o MoneyMap.

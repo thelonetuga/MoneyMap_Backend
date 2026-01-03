@@ -194,3 +194,11 @@ class PortfolioResponse(BaseModel):
 class HistoryPoint(BaseModel):
     date: str   # "2023-11-01"
     value: float
+
+class EvolutionPoint(BaseModel):
+    period: str         # "2023", "2023-Q1", "Jan 2024"
+    net_worth: float    # Património TOTAL (Bancos + Investimentos)
+    liquid_cash: float  # <--- NOVO: Apenas dinheiro em contas bancárias
+    expenses: float     # Total gasto no período (valor absoluto)
+    income: float       # Total ganho no período
+    savings_rate: float # (Income - Expenses) / Income * 100

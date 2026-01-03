@@ -59,7 +59,16 @@ def auth_headers(client):
 def seed_db(db_session):
     # Garante que existem tipos de conta e transação antes de testar
     if not db_session.query(TransactionType).first():
-        db_session.add(TransactionType(id=1, name="Despesa Geral", is_investment=False))
-        db_session.add(TransactionType(id=2, name="Receita Salário", is_investment=False))
+        # Tipos de Transação
+        db_session.add(TransactionType(id=1, name="Despesa", is_investment=False))
+        db_session.add(TransactionType(id=2, name="Receita", is_investment=False))
+        db_session.add(TransactionType(id=3, name="Compra Ativo", is_investment=True))
+        db_session.add(TransactionType(id=4, name="Venda Ativo", is_investment=True))
+        
+        # Tipos de Conta
         db_session.add(AccountType(id=1, name="Conta Ordem"))
+        db_session.add(AccountType(id=2, name="Investimento"))
+        db_session.add(AccountType(id=3, name="Poupança"))
+        db_session.add(AccountType(id=4, name="Crypto"))
+
         db_session.commit()

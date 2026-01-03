@@ -1,6 +1,6 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 import random
 
 from app.database.database import Base, SessionLocal, engine
@@ -13,7 +13,7 @@ from app.utils.auth import get_password_hash
 def run_seed():
     """
     Populates the database with a comprehensive set of realistic data for development and testing.
-    Includes multiple users, accounts, categories, assets, holdings, and a rich transaction history.
+    Includes multiple users, accounts, categories, assets, holdings, and a rich transaction history spanning 3 years.
     """
     db: Session = SessionLocal()
     print("🌱 Starting database seed...")
@@ -60,8 +60,8 @@ def run_seed():
             Asset(symbol="AAPL", name="Apple Inc.", asset_type="Stock"),
             Asset(symbol="GOOGL", name="Alphabet Inc.", asset_type="Stock"),
             Asset(symbol="MSFT", name="Microsoft Corporation", asset_type="Stock"),
-            Asset(symbol="BTC", name="Bitcoin", asset_type="Crypto"),
-            Asset(symbol="ETH", name="Ethereum", asset_type="Crypto"),
+            Asset(symbol="BTC-USD", name="Bitcoin", asset_type="Crypto"), # Ajustado para yfinance
+            Asset(symbol="ETH-USD", name="Ethereum", asset_type="Crypto"),
         ]
         db.add_all(assets)
         db.commit()
@@ -78,7 +78,7 @@ def run_seed():
 
         # Fetch assets for later use
         aapl = db.query(Asset).filter(Asset.symbol == "AAPL").first()
-        btc = db.query(Asset).filter(Asset.symbol == "BTC").first()
+        btc = db.query(Asset).filter(Asset.symbol == "BTC-USD").first()
         msft = db.query(Asset).filter(Asset.symbol == "MSFT").first()
 
         for u_data in users_data:
@@ -97,22 +97,23 @@ def run_seed():
             db.add(profile)
 
             # Create Accounts
-            main_account = Account(user_id=user.id, name=f"Banco Principal", account_type_id=1, current_balance=random.uniform(1000, 2500))
+            # Saldo inicial será ajustado pelas transações, mas começamos com um valor base
+            main_account = Account(user_id=user.id, name=f"Banco Principal", account_type_id=1, current_balance=0)
             db.add(main_account)
 
             investment_account = None
             if u_data["role"] in ["premium", "admin"]:
-                investment_account = Account(user_id=user.id, name="Conta Corretora", account_type_id=2, current_balance=random.uniform(5000, 15000))
+                investment_account = Account(user_id=user.id, name="Conta Corretora", account_type_id=2, current_balance=0)
                 db.add(investment_account)
             db.commit()
 
             # Create Categories & Sub-categories
             categories = {
                 "Casa": ["Renda", "Supermercado", "Eletricidade", "Internet"],
-                "Transporte": ["Combustível", "Transporte Público"],
-                "Lazer": ["Restaurantes", "Cinema", "Viagens"],
-                "Saúde": ["Farmácia", "Consulta"],
-                "Salário": ["Ordenado"]
+                "Transporte": ["Combustível", "Transporte Público", "Uber"],
+                "Lazer": ["Restaurantes", "Cinema", "Viagens", "Jogos"],
+                "Saúde": ["Farmácia", "Consulta", "Ginásio"],
+                "Salário": ["Ordenado", "Bónus"]
             }
             user_categories = {}
             for cat_name, sub_cats in categories.items():
@@ -126,50 +127,80 @@ def run_seed():
                     db.commit()
                     user_categories[cat_name]["sub"][sub_name] = sub.id
 
-            # 6. Transaction History
-            print(f"   💸 Seeding transaction history for {user.email}...")
-            # Income
-            db.add(Transaction(
-                date=date.today() - timedelta(days=15), description="Salário do Mês", amount=3000,
-                account_id=main_account.id, transaction_type_id=2, 
-                category_id=user_categories["Salário"]["id"],
-                subcategory_id=user_categories["Salário"]["sub"]["Ordenado"]
-            ))
+            # 6. Transaction History (3 Years)
+            print(f"   💸 Seeding 3 years of history for {user.email}...")
+            
+            start_date = date.today() - timedelta(days=3*365)
+            current_date = start_date
+            end_date = date.today()
+            
+            balance_main = 1000.0 # Saldo inicial simulado
+            balance_invest = 0.0
 
-            # Expenses
-            for day in range(1, 30):
-                db.add(Transaction(
-                    date=date.today() - timedelta(days=day), description="Compras Pingo Doce", amount=-random.uniform(15, 45),
-                    account_id=main_account.id, transaction_type_id=1, 
-                    category_id=user_categories["Casa"]["id"], subcategory_id=user_categories["Casa"]["sub"]["Supermercado"]
-                ))
-                if day % 5 == 0:
-                     db.add(Transaction(
-                        date=date.today() - timedelta(days=day), description="Jantar Fora", amount=-random.uniform(30, 80),
-                        account_id=main_account.id, transaction_type_id=1, 
-                        category_id=user_categories["Lazer"]["id"], subcategory_id=user_categories["Lazer"]["sub"]["Restaurantes"]
+            while current_date <= end_date:
+                # 1. Salário (Dia 1 ou 28 de cada mês)
+                if current_date.day == 1:
+                    salary = 2500.0 if u_data["role"] == "premium" else 1500.0
+                    db.add(Transaction(
+                        date=current_date, description="Salário Mensal", amount=salary,
+                        account_id=main_account.id, transaction_type_id=2, 
+                        category_id=user_categories["Salário"]["id"],
+                        subcategory_id=user_categories["Salário"]["sub"]["Ordenado"]
                     ))
+                    balance_main += salary
+                    
+                    # Renda (Dia 1)
+                    rent = 800.0 if u_data["role"] == "premium" else 500.0
+                    db.add(Transaction(
+                        date=current_date, description="Pagamento Renda", amount=-rent,
+                        account_id=main_account.id, transaction_type_id=1, 
+                        category_id=user_categories["Casa"]["id"],
+                        subcategory_id=user_categories["Casa"]["sub"]["Renda"]
+                    ))
+                    balance_main -= rent
 
-            # Investment transactions for premium users
+                # 2. Despesas Aleatórias (Supermercado, Lazer, etc.)
+                # Probabilidade de 40% de ter uma despesa num dia qualquer
+                if random.random() < 0.4:
+                    cat_key = random.choice(["Casa", "Transporte", "Lazer", "Saúde"])
+                    sub_key = random.choice(list(user_categories[cat_key]["sub"].keys()))
+                    
+                    amount = round(random.uniform(5.0, 150.0), 2)
+                    desc = f"Despesa em {sub_key}"
+                    
+                    db.add(Transaction(
+                        date=current_date, description=desc, amount=-amount,
+                        account_id=main_account.id, transaction_type_id=1, 
+                        category_id=user_categories[cat_key]["id"],
+                        subcategory_id=user_categories[cat_key]["sub"][sub_key]
+                    ))
+                    balance_main -= amount
+
+                # 3. Investimentos (Apenas Premium/Admin e se tiver saldo)
+                if investment_account and current_date.day == 15 and balance_main > 2000:
+                    invest_amount = 500.0
+                    # Transferência (Simulada como Saída do Banco e Entrada na Corretora)
+                    # Simplificação: Criamos logo a compra do ativo
+                    
+                    asset_choice = random.choice([aapl, btc, msft])
+                    qty = round(invest_amount / 150.0, 4) # Preço fictício médio
+                    
+                    db.add(Transaction(
+                        date=current_date, description=f"Compra {asset_choice.symbol}", amount=-invest_amount,
+                        account_id=investment_account.id, transaction_type_id=3, 
+                        asset_id=asset_choice.id, quantity=qty
+                    ))
+                    balance_invest += invest_amount # Na verdade o saldo cash desce, mas o valor investido sobe. 
+                    # Para simplificar o seed, não vamos gerir o "Cash Balance" da corretora ao detalhe, 
+                    # assumimos que o dinheiro "saiu" para comprar o ativo.
+
+                current_date += timedelta(days=1)
+            
+            # Atualizar saldos finais
+            main_account.current_balance = round(balance_main, 2)
             if investment_account:
-                # Buy AAPL
-                db.add(Holding(account_id=investment_account.id, asset_id=aapl.id, quantity=10, avg_buy_price=150.0))
-                db.add(Transaction(
-                    date=date.today() - timedelta(days=40), description="Compra de 10 Ações Apple", amount=-1500.0,
-                    account_id=investment_account.id, transaction_type_id=3, asset_id=aapl.id, quantity=10
-                ))
-                # Buy BTC
-                db.add(Holding(account_id=investment_account.id, asset_id=btc.id, quantity=0.1, avg_buy_price=40000.0))
-                db.add(Transaction(
-                    date=date.today() - timedelta(days=35), description="Compra de 0.1 Bitcoin", amount=-4000.0,
-                    account_id=investment_account.id, transaction_type_id=3, asset_id=btc.id, quantity=0.1
-                ))
-                # Buy MSFT
-                db.add(Holding(account_id=investment_account.id, asset_id=msft.id, quantity=15, avg_buy_price=300.0))
-                db.add(Transaction(
-                    date=date.today() - timedelta(days=20), description="Compra de 15 Ações Microsoft", amount=-4500.0,
-                    account_id=investment_account.id, transaction_type_id=3, asset_id=msft.id, quantity=15
-                ))
+                investment_account.current_balance = round(balance_invest, 2) # Isto é discutível, mas serve para o seed
+            
             db.commit()
 
         print("   ✅ User data, transactions, and holdings seeded.")

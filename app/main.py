@@ -5,9 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 # Importa os teus routers
 from app.routers import users, transactions, accounts, categories, analytics, portfolio, imports, auth, setup
 from app.database.database import engine, Base
-from app.core.logging import logger  # <--- Importar o logger
+from app.core.logging import logger
 
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)  <--- COMENTADO: Agora usamos Alembic para gerir a BD!
 
 app = FastAPI(title="MoneyMap API")
 
@@ -61,5 +61,5 @@ app.include_router(setup.router)
 
 @app.get("/")
 def read_root():
-    logger.info("Root endpoint accessed") # Exemplo de uso manual
+    logger.info("Root endpoint accessed")
     return {"message": "MoneyMap Backend a bombar! 🚀"}
