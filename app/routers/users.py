@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.database.database import get_db
-from app.models.user import User
+from app.models.user import User, UserProfile
 from app.schemas import schemas
 from app.utils.auth import get_current_user, get_password_hash
 
@@ -38,26 +38,34 @@ def read_users_me(current_user: User = Depends(get_current_user)):
 # --- 3. ATUALIZAR PRÓPRIO PERFIL (Autenticado) ---
 @router.put("/me", response_model=schemas.UserResponse)
 def update_user_me(
-    user_update: schemas.UserUpdate, # Certifica-te que tens este schema ou usa um dict
-    db: Session = Depends(get_db),
+    user_update: schemas.UserUpdate, 
+    db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
-    # Atualiza apenas campos enviados
-    update_data = user_update.model_dump(exclude_unset=True)
+    # 1. Verificar se o user já tem perfil. Se não tiver, CRIA UM NOVO.
+    if not current_user.profile:
+        new_profile = UserProfile(user_id=current_user.id)
+        db.add(new_profile)
+        current_user.profile = new_profile # Associa imediatamente para usarmos abaixo
     
-    # Lógica para Profile (se for aninhado) ou campos diretos
-    if 'profile' in update_data:
-        # Lógica complexa de profile omitida para simplicidade, 
-        # assume-se que User tem campos diretos ou relação.
-        pass 
+    # 2. Atualizar apenas os campos que foram enviados (diferentes de None)
+    if user_update.first_name is not None:
+        current_user.profile.first_name = user_update.first_name
+        
+    if user_update.last_name is not None:
+        current_user.profile.last_name = user_update.last_name
+        
+    if user_update.preferred_currency is not None:
+        current_user.profile.preferred_currency = user_update.preferred_currency
 
-    # Exemplo simples se tiveres first_name no Profile:
-    if current_user.profile:
-        if hasattr(user_update, 'first_name'): current_user.profile.first_name = user_update.first_name
-        if hasattr(user_update, 'preferred_currency'): current_user.profile.preferred_currency = user_update.preferred_currency
-    
+    # (Opcional: Se quiseres permitir mudar password aqui também)
+    # if user_update.password:
+    #     current_user.password_hash = get_password_hash(user_update.password)
+
+    db.add(current_user.profile) # Garante que o profile é marcado para update
     db.commit()
     db.refresh(current_user)
+    
     return current_user
 
 # --- 4. LISTAR TODOS (ADMIN ONLY) - A ROTA QUE FALTAVA ---

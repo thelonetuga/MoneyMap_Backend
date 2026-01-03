@@ -15,7 +15,7 @@ router = APIRouter(prefix="/categories", tags=["categories"])
 # Agora usamos "/" que o FastAPI resolve automaticamente para "/categories" e "/categories/"
 @router.get("/", response_model=List[schemas.CategoryResponse])
 def read_categories(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Categorias do User + Globais
+    # CORREÇÃO: Adicionado .options(joinedload(Category.subcategories))
     return db.query(Category).options(joinedload(Category.subcategories)).filter(
         (Category.user_id == current_user.id) | (Category.user_id == None)
     ).all()
@@ -47,14 +47,25 @@ def create_subcategory(sub: schemas.SubCategoryCreate, db: Session = Depends(get
     db.refresh(db_sub)
     return db_sub
 
-@router.delete("/subcategories/{sub_id}")
-def delete_subcategory(sub_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    sub = db.query(SubCategory).filter(SubCategory.id == sub_id).first()
-    if not sub: raise HTTPException(status_code=404, detail="Não encontrada")
+@router.delete("/subcategories/{subcategory_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_subcategory(
+    subcategory_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Encontrar a subcategoria
+    sub = db.query(SubCategory).filter(SubCategory.id == subcategory_id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subcategoria não encontrada")
     
-    if sub.transactions:
-         raise HTTPException(status_code=400, detail="Não pode apagar categoria com movimentos associados.")
+    # 2. Verificar se pertence ao user (através da Categoria Pai)
+    # A subcategoria está ligada a uma Categoria, que está ligada a um User (ou é global)
+    parent_category = db.query(Category).filter(Category.id == sub.category_id).first()
+    
+    if parent_category.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Não tem permissão para apagar esta subcategoria.")
 
+    # 3. Apagar
     db.delete(sub)
     db.commit()
-    return {"ok": True}
+    return None

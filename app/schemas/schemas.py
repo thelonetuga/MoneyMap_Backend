@@ -83,9 +83,8 @@ class CategoryCreate(CategoryBase):
 
 class CategoryResponse(CategoryBase):
     id: int
-    user_id: int
-    # Inclui a lista de subcategorias automaticamente
-    sub_categories: List[SubCategoryResponse] = []
+    user_id: Optional[int] = None # <--- Alterado para aceitar NULL (categorias globais)
+    subcategories: List[SubCategoryResponse] = []
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -117,7 +116,7 @@ class AccountCreate(AccountBase):
 class AccountResponse(AccountBase):
     id: int
     user_id: int
-    account_type: AccountTypeResponse # Devolve o objeto completo (nome, id)
+    account_type: Optional[AccountTypeResponse] = None # Devolve o objeto completo (nome, id)
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -171,6 +170,7 @@ class TransactionResponse(TransactionBase):
     category: Optional[CategoryResponse] = None
     sub_category: Optional[SubCategoryResponse] = None
     asset: Optional[AssetResponse] = None
+    account: AccountResponse
     
     model_config = ConfigDict(from_attributes=True)
 

@@ -50,8 +50,8 @@ def read_transactions(
     transactions = query.options(
         joinedload(Transaction.transaction_type),
         joinedload(Transaction.category),
-        joinedload(Transaction.subcategory)
-        # joinedload(Transaction.asset) # Só descomentar se tiveres adicionado asset_id à Transação
+        joinedload(Transaction.subcategory), # Já tinhas este
+        joinedload(Transaction.account)      # <--- ADICIONA ESTA LINHA (A CORREÇÃO) ✅
     ).order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
 
     return transactions
