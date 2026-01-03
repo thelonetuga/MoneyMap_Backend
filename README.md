@@ -1,78 +1,77 @@
-# MoneyMap Backend API 🚀
+# MoneyMap 💰
 
-Backend da aplicação **MoneyMap**, desenvolvido em **FastAPI**.
-Este sistema gere finanças pessoais, incluindo contas bancárias, transações, categorização automática e portfólio de investimentos (Ações/Crypto).
+O **MoneyMap** é uma aplicação de gestão financeira pessoal projetada para monitorizar o património líquido, investimentos e despesas. A solução combina um dashboard interativo no frontend com uma infraestrutura de dados robusta.
 
-## 🛠️ Tecnologias
+## 🏗️ Arquitetura do Projeto
 
-- **Framework:** FastAPI
-- **Base de Dados:** SQLAlchemy (PostgreSQL/SQLite)
-- **Validação:** Pydantic
-- **Autenticação:** OAuth2 com JWT
+O projeto segue uma arquitetura cliente-servidor:
 
----
+*   **Frontend (`MoneyMap_Frontend`)**: Aplicação *Single Page Application* (SPA) construída com Next.js.
+*   **Backend (`MoneyMap_Backend`)**: Infraestrutura de dados suportada por PostgreSQL e Docker.
+*   **API**: O frontend comunica com uma API REST (a correr localmente na porta 8000).
 
-## 🚀 Como Iniciar
+## 🚀 Tecnologias Utilizadas
 
-### 1. Instalar Dependências
-Certifica-te que tens o Python instalado e corre:
-```bash
-pip install -r requirements.txt
-```
+### Frontend
+*   **Framework**: Next.js (React) com TypeScript.
+*   **Estilos**: Tailwind CSS para design responsivo.
+*   **Visualização de Dados**: Recharts para gráficos de área e circulares.
+*   **Qualidade de Código**: ESLint e Axe-core para acessibilidade (a11y).
 
-### 2. Popular a Base de Dados (Seed)
-Para criar as tabelas e inserir dados de teste (Utilizadores, Contas, Transações, Ativos):
-```bash
-python -m app.seed
-```
-> **Credenciais de Teste:**
-> - **Admin:** `admin@moneymap.com` / `123`
-> - **Premium:** `premium@moneymap.com` / `123`
-> - **Básico:** `basic@moneymap.com` / `123`
+### Infraestrutura (Backend)
+*   **Base de Dados**: PostgreSQL 15.
+*   **Containerização**: Docker e Docker Compose.
 
-### 3. Correr o Servidor
-```bash
-uvicorn app.main:app --reload
-```
-A API ficará disponível em: `http://localhost:8000`
-Documentação interativa (Swagger): `http://localhost:8000/docs`
+## ⚙️ Configuração e Instalação
 
----
+### Pré-requisitos
+*   Node.js (v18+)
+*   Docker e Docker Compose
 
-## 📚 Visão Geral dos Endpoints
+### 1. Configurar a Base de Dados
+A base de dados é gerida via Docker. É necessário configurar as variáveis de ambiente antes de iniciar.
 
-### 🔐 Autenticação (`/auth`)
-- `POST /token`: Login (retorna *Access Token*).
+1.  Navegue até à pasta do docker:
+    ```bash
+    cd MoneyMap_Backend/docker
+    ```
+2.  Crie um ficheiro `.env` com as credenciais (se ainda não existir):
+    ```env
+    POSTGRES_USER=admin
+    POSTGRES_PASSWORD=segredo
+    POSTGRES_DB=moneymap_db
+    ```
+3.  Inicie o serviço:
+    ```bash
+    docker-compose up -d
+    ```
 
-### 👤 Utilizadores (`/users`)
-- `POST /`: Registar novo utilizador.
-- `GET /me`: Ver perfil do utilizador logado.
-- `PUT /me`: Atualizar perfil (nome, moeda preferida).
+### 2. Iniciar o Frontend
 
-### 🏦 Contas (`/accounts`)
-- `GET /`: Listar todas as contas e saldos.
-- `POST /`: Criar nova conta (Banco, Corretora, Poupança).
+1.  Navegue até à pasta do frontend:
+    ```bash
+    cd MoneyMap_Frontend
+    ```
+2.  Instale as dependências:
+    ```bash
+    npm install
+    ```
+3.  Inicie o servidor de desenvolvimento:
+    ```bash
+    npm run dev
+    ```
+4.  Aceda a `http://localhost:3000` no seu browser.
 
-### 💸 Transações (`/transactions`)
-- `GET /`: Listar transações (filtros: data, conta, tipo, pesquisa).
-- `POST /`: Criar transação (gere automaticamente o saldo da conta e holdings de ativos).
-- `PUT / DELETE`: Editar ou apagar transações (reverte saldos automaticamente).
+## 📊 Funcionalidades do Dashboard
 
-### 📊 Analytics (`/analytics` & `/history`)
-- `GET /analytics/spending`: Totais de despesas por categoria (para gráficos).
-- `GET /history`: Evolução do património nos últimos 30 dias (cálculo retroativo diário).
+O painel principal (`src/app/page.tsx`) oferece:
 
-### 📈 Portfólio (`/portfolio`)
-- `GET /portfolio`: Resumo completo de investimentos.
-  - Calcula valor atual das posições (Ações/Crypto).
-  - Retorna Lucro/Prejuízo (P/L) e alocação de ativos.
+1.  **Resumo Financeiro**: Património Total, Liquidez e Total Investido.
+2.  **Visualização Gráfica**: Evolução Patrimonial (30 dias), Despesas e Alocação de Portfólio.
+3.  **Gestão de Ativos**: Tabela detalhada com cálculo automático de Lucro/Prejuízo.
 
-### 📥 Importações (`/imports`)
-- `POST /imports/upload`: Upload de ficheiros CSV/Excel.
-  - Deteta automaticamente colunas (Data, Descrição, Valor).
-  - Cria transações em massa e atualiza saldos.
+## 🔌 Integração com API
 
-### ⚙️ Configuração (`/lookups`, `/assets`, `/categories`)
-- `GET /lookups/account-types`: Tipos de conta disponíveis.
-- `GET /lookups/transaction-types`: Tipos de movimento (Despesa, Receita, Compra/Venda Ativo).
-- `GET /assets`: Lista de ativos financeiros suportados (ex: AAPL, BTC).
+O frontend consome endpoints em `http://127.0.0.1:8000` (`/portfolio`, `/history`, `/analytics/spending`).
+
+**Autenticação**: As requisições utilizam um token `Bearer` armazenado no `localStorage`.
