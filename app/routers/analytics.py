@@ -6,13 +6,13 @@ from typing import List
 
 from app.database.database import get_db
 from app.utils.auth import get_current_user
-from app.models import User, Transaction, Category # <--- Adicionei Category
+from app.models import User, Transaction, Category
 from app.schemas import schemas
 
-router = APIRouter(tags=["analytics"])
+router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 # --- 1. SPENDING ANALYTICS (Para o Gráfico de Despesas) ---
-@router.get("/analytics/spending", response_model=List[dict])
+@router.get("/spending", response_model=List[dict])
 def get_spending_analytics(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Identificar as contas do utilizador
     user_account_ids = [acc.id for acc in current_user.accounts]

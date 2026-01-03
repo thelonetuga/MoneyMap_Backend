@@ -1,13 +1,35 @@
-from fastapi import FastAPI
+import time
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 # Importa os teus routers
 from app.routers import users, transactions, accounts, categories, analytics, portfolio, imports, auth, setup
 from app.database.database import engine, Base
+from app.core.logging import logger  # <--- Importar o logger
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="MoneyMap API")
+
+# --- MIDDLEWARE DE LOGGING ---
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    
+    # Processar o pedido
+    response = await call_next(request)
+    
+    process_time = (time.time() - start_time) * 1000 # ms
+    formatted_process_time = "{0:.2f}".format(process_time)
+    
+    # Logar detalhes
+    logger.info(
+        f"Method={request.method} Path={request.url.path} "
+        f"Status={response.status_code} Duration={formatted_process_time}ms"
+    )
+    
+    return response
+# -----------------------------
 
 # --- CONFIGURAÇÃO CORS CRÍTICA ---
 origins = [
@@ -39,4 +61,5 @@ app.include_router(setup.router)
 
 @app.get("/")
 def read_root():
+    logger.info("Root endpoint accessed") # Exemplo de uso manual
     return {"message": "MoneyMap Backend a bombar! 🚀"}

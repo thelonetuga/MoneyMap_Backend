@@ -7,7 +7,7 @@ from app.database.database import get_db
 # USAMOS A TUA IMPORTAÇÃO (Assume que app/models expõe estas classes)
 from app.models import Transaction, Account, User, TransactionType, Holding, Category, SubCategory, Asset
 from app.schemas import schemas
-from app.dependencies import get_current_user
+from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
