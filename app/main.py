@@ -16,9 +16,10 @@ origins = [
     "http://localhost:8000",      # Swagger UI
 ]
 
+# Configuração de CORS para permitir que o Frontend (porta 3000) comunique com a API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # ⚠️ Em dev, usamos "*" para aceitar TUDO e evitar dores de cabeça
+    allow_origins=origins, # Usar a lista de origens definida acima é mais seguro e correto com credentials=True
     allow_credentials=True,
     allow_methods=["*"], # Permitir GET, POST, PUT, DELETE, etc.
     allow_headers=["*"], # Permitir todos os cabeçalhos

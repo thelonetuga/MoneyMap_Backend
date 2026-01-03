@@ -9,5 +9,17 @@ services:
     ports:
       - "5432:5432"
 
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: moneymap_api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://admin:segredo@db:5432/moneymap_db
+    depends_on:
+      - db
+
 volumes:
   postgres_data:
