@@ -65,7 +65,7 @@ def delete_subcategory(
 
     # 3. VERIFICAÇÃO DE SEGURANÇA (NOVO) 🚨
     # Se houver alguma transação a usar esta subcategoria, bloqueia!
-    usage_check = db.query(Transaction).filter(Transaction.sub_category_id == subcategory_id).first()
+    usage_check = db.query(Transaction).filter(Transaction.subcategory_id == subcategory_id).first()
     if usage_check:
         raise HTTPException(
             status_code=400, 

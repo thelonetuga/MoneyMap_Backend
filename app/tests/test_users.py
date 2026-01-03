@@ -12,7 +12,8 @@ def test_update_profile(client, auth_headers):
     res = client.put("/users/me", json=payload, headers=auth_headers)
     assert res.status_code == 200
     
-    # CORREÇÃO: Aceder ao objeto 'profile' primeiro
     data = res.json()
+    
+    # CORREÇÃO: Aceder através de ["profile"]
     assert data["profile"]["first_name"] == "Administrador"
-    assert res.json()["preferred_currency"] == "USD"
+    assert data["profile"]["preferred_currency"] == "USD"

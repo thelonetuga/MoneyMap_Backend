@@ -49,4 +49,4 @@ def test_cannot_delete_category_with_transactions(client, auth_headers, db_sessi
     
     # 3. Deve falhar (Bad Request)
     assert del_res.status_code == 400
-    assert "movimentos associados" in del_res.json()["detail"]
+    assert "transações associadas" in del_res.json()["detail"]
